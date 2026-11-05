@@ -3,7 +3,9 @@ namespace CiciPDA;
 public static class AppPaths
 {
     static string? _data;
-    public static string BaseDir => AppContext.BaseDirectory;
+    /// <summary>Test hook: pretend the application is installed somewhere else.</summary>
+    public static string? BaseDirOverride { get; set; }
+    public static string BaseDir => BaseDirOverride ?? AppContext.BaseDirectory;
 
     public static string DataDir
     {

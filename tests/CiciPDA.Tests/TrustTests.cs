@@ -3,6 +3,7 @@ using Xunit;
 
 namespace CiciPDA.Tests;
 
+[Collection("AppPaths")]
 public class TrustTests
 {
     static string Bundled()

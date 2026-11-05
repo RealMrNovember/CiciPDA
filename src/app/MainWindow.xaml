@@ -245,6 +245,7 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <TextBlock Style="{StaticResource MutedText}" FontSize="11" Margin="0,8,0,0" Text="{Binding PhoneNetworkText, StringFormat='Phone network: {0}'}"/>
+                                    <TextBlock Style="{StaticResource MutedText}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding HotspotText}" Visibility="{Binding HotspotText, Converter={StaticResource HasText}}"/>
                                 </StackPanel>
                             </Border>
 
@@ -503,7 +504,7 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="WI-FI SHARING FROM THIS PC  (experimental, needs hardware validation)" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock Text="WI-FI SHARING FROM THIS PC  (shares only the CiciPDA connection; needs hardware validation)" Style="{StaticResource SectionTitle}"/>
                                 <CheckBox Content="Share the connection through Windows Mobile Hotspot after connecting" IsChecked="{Binding Edit.ShareWifi}" Margin="0,8"/>
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="260"/></Grid.ColumnDefinitions><TextBlock Text="Network name (SSID)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.HotspotSsid}"/></Grid>
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="260"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Passphrase (stored encrypted)" VerticalAlignment="Center"/><PasswordBox x:Name="HotspotPass" Grid.Column="1" Padding="8,6" Background="{DynamicResource Bg}" Foreground="{DynamicResource Text}" BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Green}"/><Button Grid.Column="2" Content="Generate" Command="{Binding GenPassword}" Margin="8,0,0,0"/></Grid>

@@ -471,18 +471,37 @@ public sealed class Orchestrator
 
         if (Method is ConnectionMethod.PhoneVpn or ConnectionMethod.Usb && Cfg.ShareWifi)
         {
-            var pass = Secret.Unprotect(Cfg.HotspotPasswordProtected);
-            if (pass.Length < 8) Log.Warn("hotspot", "Wi-Fi sharing is on but no valid passphrase is saved. Set one in Settings.");
-            else
-            {
-                var (ok, msg) = await Hotspot.StartAsync(Cfg.HotspotSsid, pass, ct);
-                _journal.State.HotspotActive = Hotspot.Active; _journal.Save();
-                if (ok) Log.Ok("hotspot", $"Wi-Fi hotspot \"{Cfg.HotspotSsid}\" started.");
-                else Log.Warn("hotspot", "Wi-Fi sharing could not start: " + msg);
-            }
+            if (!full) Log.Warn("hotspot", "Wi-Fi sharing was not started because the connection did not pass full internet verification.");
+            else await StartSharingAsync(ct);
         }
         _healthCts = new CancellationTokenSource();
         _ = Task.Run(() => HealthLoop(_healthCts.Token));
+    }
+
+    // ---------- Wi-Fi sharing ----------
+    public HotspotService Hotspot { get; } = new();
+
+    /// <summary>Shares ONLY the CiciPDA adapter. If Windows cannot do that, say so; never fall back to another connection.</summary>
+    async Task StartSharingAsync(CancellationToken ct)
+    {
+        var pass = Secret.Unprotect(Cfg.HotspotPasswordProtected);
+        if (pass.Length < 8) { Log.Warn("hotspot", "Wi-Fi sharing is on but no valid passphrase is saved. Set one in Settings."); return; }
+        var guid = HotspotService.AdapterGuid(TunnelNetwork.AdapterName);
+        if (guid == null) { Log.Warn("hotspot", "Wi-Fi sharing skipped: the CiciPDA adapter GUID could not be determined."); return; }
+        // Windows creates the connection profile for a new adapter a moment after it comes up.
+        HotspotCheck chk = await Hotspot.CheckAsync(guid);
+        for (int i = 0; i < 8 && chk.Capability == "NoProfile"; i++) { await Task.Delay(1000, ct); chk = await Hotspot.CheckAsync(guid); }
+        if (!chk.CanShare)
+        {
+            Log.Warn("hotspot", "Wi-Fi sharing unavailable for the CiciPDA connection: " + chk.Detail + " Supported alternative: enable Internet Connection Sharing manually (CiciPDA adapter > Properties > Sharing) or connect the other device to a Wi-Fi network that routes through this PC.");
+            Changed?.Invoke(); return;
+        }
+        _journal.State.HotspotAdapter = guid; _journal.State.HotspotActive = true; _journal.Save();   // journal first: recovery must know even if we crash mid-start
+        Changed?.Invoke();
+        var ok = await Hotspot.StartAsync(guid, Cfg.HotspotSsid, pass, null, ct);
+        if (!ok) { _journal.State.HotspotActive = false; _journal.State.HotspotAdapter = null; _journal.Save(); }
+        else Log.Ok("hotspot", $"Wi-Fi hotspot \"{Cfg.HotspotSsid}\" is sharing the CiciPDA connection (profile \"{chk.Profile}\").");
+        Changed?.Invoke();
     }
 
     // ---------- health & reconnect ----------
@@ -505,6 +524,7 @@ public sealed class Orchestrator
             }
             else if (_nativeIface?.Invoke() is not { OperationalStatus: OperationalStatus.Up }) problem = "The network interface went down.";
 
+            if (Hotspot.UpstreamGuid != null) { try { await Hotspot.RefreshAsync(); Changed?.Invoke(); } catch (Exception ex) { Log.Debug("hotspot", ex.Message); } }
             if (problem == null && (_monitor?.RecentProbeFailures ?? 0) >= 3) problem = "The connection stopped responding.";
             if (problem == null) { bad = 0; if (State == ConnState.Limited && (_monitor?.RecentProbeFailures ?? 1) == 0) { Internet = NetState.Reachable; Set(ConnState.Connected, "Recovered"); } Changed?.Invoke(); continue; }
             if (++bad < (problem.StartsWith("The connection") ? 1 : 2)) continue;
@@ -578,7 +598,7 @@ public sealed class Orchestrator
         var snap = Traffic;
         try { _monitor?.Dispose(); } catch { }
         _monitor = null; _nativeIface = null;
-        if (Hotspot.Active) { try { await Hotspot.StopAsync(); Log.Info("hotspot", "Wi-Fi hotspot stopped."); } catch (Exception ex) { Log.Warn("hotspot", ex.Message); } _journal.State.HotspotActive = false; }
+        if (Hotspot.UpstreamGuid != null) { try { await Hotspot.StopAsync(); } catch (Exception ex) { Log.Warn("hotspot", ex.Message); } _journal.State.HotspotActive = false; _journal.State.HotspotAdapter = null; }
         try { if (_net != null) await _net.StopAsync(); } catch (Exception ex) { Log.Error("cleanup", ex, "Network cleanup"); }
         _net = null;
         try { _socks?.Dispose(); } catch { }
@@ -629,17 +649,22 @@ public sealed class Orchestrator
     {
         var ssid = await CurrentSsidAsync();
         if (ssid == null) return (null, "Windows is not connected to a Wi-Fi network. Turn on the phone's hotspot and join it from the Windows Wi-Fi menu.");
-        var ni = FirstUp(n => n.NetworkInterfaceType == NetworkInterfaceType.Wireless80211);
-        return ni == null ? (null, "The Wi-Fi adapter has no IPv4 address yet. Wait a few seconds and try again.") : (ni, ssid);
+        var sel = NativeLinks.SelectWifi(NativeLinks.Snapshot(), ssid);
+        return sel == null ? (null, "The Wi-Fi adapter has no IPv4 address yet. Wait a few seconds and try again.") : (WinNet.FindByName(sel.Name), ssid);
     }
+
+    public IphoneMode IphoneLink { get; private set; }
 
     async Task<(NetworkInterface?, string)> FindIphoneAsync()
     {
-        var usb = FirstUp(n => n.Description.Contains("Apple Mobile Device", StringComparison.OrdinalIgnoreCase) || n.Description.Contains("iPhone", StringComparison.OrdinalIgnoreCase));
-        if (usb != null) return (usb, "iPhone (USB)");
         var ssid = await CurrentSsidAsync();
-        var wifi = ssid == null ? null : FirstUp(n => n.NetworkInterfaceType == NetworkInterfaceType.Wireless80211);
-        if (wifi != null) return (wifi, ssid + " (Personal Hotspot)");
-        return (null, "No iPhone connection found. Enable Personal Hotspot and either join it over Wi-Fi, or connect by USB with Apple's drivers installed (Apple Devices / iTunes) and tap Trust.");
+        var snap = NativeLinks.Snapshot();
+        var (sel, mode) = NativeLinks.SelectIphone(snap, ssid);
+        IphoneLink = mode;
+        if (sel != null)
+            return (WinNet.FindByName(sel.Name), mode == IphoneMode.UsbAppleEthernet ? "iPhone (USB, Apple Ethernet adapter)" : ssid + " (iPhone Personal Hotspot over Wi-Fi)");
+        if (NativeLinks.AppleAdapterPresentButIdle(snap))
+            return (null, "Windows sees the iPhone's USB adapter but it has no network address yet. Turn on Personal Hotspot on the iPhone, unlock it and tap Trust This Computer, then try again.");
+        return (null, "No iPhone connection found. Either join the iPhone's Personal Hotspot from the Windows Wi-Fi menu, or connect by USB with Apple's drivers installed (Apple Devices app / iTunes), enable Personal Hotspot and tap Trust. Note: iPhone modes use Windows' own connection; CiciPDA does not tunnel or encrypt this traffic.");
     }
 }

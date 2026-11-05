@@ -112,3 +112,33 @@ Development preview (renders a page to PNG; `--demo` fills **sample numbers for 
 
 ### NOT tested
 * Running the installer (needs UAC elevation), install location, shortcuts, upgrade-over-existing, uninstall, and the silent update hand-off; the download path against a real GitHub release (none published yet).
+
+---
+
+## Release-critical audit fixes (2026-11-06, second pass)
+
+### What changed
+* **ADB packaging (P0, confirmed and fixed):** `CiciPDA.csproj` still pointed at the removed `data\adb`; the published folder had **no adb**. It now copies `third_party\adb\*` to `adb\` and an MSBuild target `ValidateOutputFiles` fails the build/publish if any required runtime file is missing (negative-tested by hiding `adb.exe`). `AdbService.Locate` order: configured path (override) -> installed `adb\` -> repo `third_party\adb` -> SDK/PATH. Tests cover bundled-first, override, broken-override fallback and that the repo has the three adb files and no `data/`.
+* **Wi-Fi sharing (P0):** `Hotspot.cs` rewritten (`HotspotService`). The upstream is selected by **adapter GUID** of the CiciPDA adapter, matched against `GetConnectionProfiles()`; `GetInternetConnectionProfile()` is no longer used (on the dev machine it returned an unrelated Wi-Fi profile, which is exactly the leak this prevents). Flow: only after full internet verification; capability check (`GetTetheringCapabilityFromConnectionProfile`) with specific reasons; refuses if Mobile Hotspot is already on (never takes over another hotspot); saves the previous access-point configuration (DPAPI) and restores it on stop; journaled for crash recovery; stopped on disconnect/failure. States: Unavailable, Available, Starting, Active, ClientConnected, ClientInternetVerified, Failed (shown in the UI and Diagnostics). *Client internet verified* uses a token-protected page served only on the hotspot LAN address; a connected device opens it and its browser performs a real DNS lookup and a real HTTPS request and reports back. If Windows cannot share the Wintun profile the reason is shown and the supported alternative (manual Internet Connection Sharing) is named. **Not verified on hardware.**
+* **iPhone (P1):** selection logic extracted to `NativeLinks` and tested; modes are now explicit and separate: iPhone USB (Apple Ethernet adapter), iPhone Personal Hotspot over Wi-Fi; both are *Windows-native links* that CiciPDA only verifies and monitors. The UI no longer implies the Android companion or CiciPDA encryption for iPhone. Wi-Fi sharing is offered only for the CiciPDA tunnel methods.
+* **Network verification (P1):** all netsh commands live in `NetshPlan` (pure, unit-tested): split default routes only, everything `store=active`, DNS on the tunnel interface only, MTU clamp 576-1500, bypass route pinned to the original interface and installed before tunnel routes with a matching delete, IPv6 routes, no registry/TTL changes. Recovery tests start a real orphan process named `tun2socks.exe` and prove it is killed, that an unrelated process (PID reuse) is never killed, and that stale/bogus journal state does not throw.
+* **Tunnel tests added:** IPv6 literal TCP, IPv6 UDP, 14 KB UDP datagram, relay restart with the same pairing key.
+* **Installer (P2):** `PrivilegesRequiredOverridesAllowed=commandline` (per-user silent install for validation), HKLM compatibility flag only for admin installs, blanket `adb forward --remove-all` on uninstall removed. `installer/validate-release.ps1` runs automatically at the end of `build-installer.ps1`.
+* New doc: `docs/ANDROID_COMPANION.md` (lifecycle, consent model, OEM restrictions).
+
+### Build and test results
+* `dotnet build` core/app/tests: 0 errors, 0 warnings. `dotnet test`: **75 passed, 0 failed** (including real Java relay over loopback, WinRT hotspot capability queries on this PC, real orphan-process recovery).
+* Installer build (Inno Setup 6.7.3): `CiciPDA-Setup-2.1.0.exe` compiled; `validate-release.ps1` **PASSED**: publish folder complete, adb files byte-identical to `third_party\adb`, companion metadata hash matches the APK, `update.json` hash matches the installer, the installer was run (per-user, silent) into a temp folder, every file verified in the installed copy, uninstaller removed the application.
+
+### Installer contents (verified in the installed copy)
+`CiciPDA.exe` (+ self-contained .NET runtime), `adb\adb.exe`, `adb\AdbWinApi.dll`, `adb\AdbWinUsbApi.dll`, `tools\wintun.dll`, `tools\tun2socks.exe`, `agent.dex`, `companion\cicipda-companion.apk`, `companion\companion.json`, `companion\companion.json.sig`, `licenses\THIRD_PARTY.md`, `licenses\LICENSE`.
+
+### Remaining hardware / environment tests
+* Elevated adapter creation, routes, DNS, MTU and rollback on a real connection; transport bypass with ADB-over-Wi-Fi; IPv6 end to end; Windows NCSI reaching *Internet*.
+* Real phones: APK install/update, notification flow, foreground-service survival, USB unplug, phone/PC restart, OEM prompts (see ANDROID_COMPANION.md).
+* Mobile Hotspot sharing the Wintun profile (capability may be `NoProfile` or disabled on some systems), a second device connecting, and the client verification page (Windows Firewall may block it).
+* iPhone USB and Wi-Fi modes with real devices.
+* Installing to `C:\Program Files\CiciByte` with UAC (validated per-user into a temp folder only), upgrade-over-existing, the silent update hand-off, the update download against a real GitHub release, SmartScreen behaviour (installer is not Authenticode-signed).
+
+### Known limitations
+Not a full layer-3 VPN and not WireGuard: TCP and UDP datagrams are relayed via SOCKS/tun2socks; ICMP is not carried; IP fragments dropped. iPhone modes are not encrypted by CiciPDA. Release readiness is **not** claimed: all file/packaging checks pass, but no physical-device validation has been done.

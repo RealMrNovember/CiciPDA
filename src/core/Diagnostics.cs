@@ -121,10 +121,15 @@ public sealed class DiagnosticsService
             }
             case "hotspot":
             {
-                var r = await ProcessRunner.RunAsync("netsh.exe", new[] { "wlan", "show", "drivers" }, TimeSpan.FromSeconds(10), ct);
-                if (!r.Ok) return Bad(id, t, "No WLAN service or Wi-Fi adapter found.", "Install/enable a Wi-Fi adapter to share the connection over Wi-Fi.");
-                bool hosted = r.Stdout.Contains("Hosted network supported  : Yes", StringComparison.OrdinalIgnoreCase) || r.Stdout.Contains("Wi-Fi Direct", StringComparison.OrdinalIgnoreCase);
-                return hosted ? Ok(id, t, "The Wi-Fi driver reports hotspot-capable features.") : Bad(id, t, "The Wi-Fi driver does not report hotspot support.", "Update the Wi-Fi driver or use a different adapter.");
+                var guid = HotspotService.AdapterGuid(TunnelNetwork.AdapterName);
+                if (guid == null)
+                {
+                    var r0 = await ProcessRunner.RunAsync("netsh.exe", new[] { "wlan", "show", "drivers" }, TimeSpan.FromSeconds(10), ct);
+                    return r0.Ok ? Ok(id, t, "A Wi-Fi adapter exists. Whether Windows can share the CiciPDA connection is checked when it is connected (the adapter does not exist yet).")
+                                 : Bad(id, t, "No WLAN service or Wi-Fi adapter found.", "Install or enable a Wi-Fi adapter to share the connection over Wi-Fi.");
+                }
+                var chk = await _orch.Hotspot.CheckAsync(guid);
+                return chk.CanShare ? Ok(id, t, $"Windows can share the CiciPDA connection (profile \"{chk.Profile}\"). {chk.Detail}") : Bad(id, t, chk.Detail, "Use Internet Connection Sharing manually, or fix the item above.");
             }
             case "firewall":
             {

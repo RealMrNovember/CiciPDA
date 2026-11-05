@@ -36,3 +36,7 @@ if (Test-Path $setup) {
     Copy-Item "$root\src\app\companion\companion.json", "$root\src\app\companion\companion.json.sig", "$root\src\app\companion\cicipda-companion.apk" "$root\artifacts" -Force
     Write-Host "Release assets ready in $root\artifacts : $(Split-Path $setup -Leaf), update.json(.sig), companion.json(.sig), cicipda-companion.apk"
 }
+
+# ---- verify the real outputs (publish folder, assets, installed copy) ----
+& "$PSScriptRoot\validate-release.ps1" -Version $Version
+if ($LASTEXITCODE) { throw 'Release validation failed - do not publish.' }

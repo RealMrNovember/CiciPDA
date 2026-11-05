@@ -29,6 +29,18 @@
     <Content Include="tools\tun2socks.exe"><Link>tools\tun2socks.exe</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Content Include="companion\*"><Link>companion\%(Filename)%(Extension)</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Content Include="agent.dex"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
-    <Content Include="..\..\data\adb\*"><Link>adb\%(Filename)%(Extension)</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="..\..\third_party\adb\*"><Link>adb\%(Filename)%(Extension)</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
   </ItemGroup>
+
+  <!-- Fail the build/publish if anything the installed product needs is missing from the real output folder. -->
+  <Target Name="ValidateOutputFiles" AfterTargets="Build;Publish">
+    <PropertyGroup>
+      <_Out Condition="'$(_IsPublishing)' == 'true'">$(PublishDir)</_Out>
+      <_Out Condition="'$(_Out)' == ''">$(OutDir)</_Out>
+    </PropertyGroup>
+    <ItemGroup>
+      <_Required Include="$(_Out)CiciPDA.exe;$(_Out)adb\adb.exe;$(_Out)adb\AdbWinApi.dll;$(_Out)adb\AdbWinUsbApi.dll;$(_Out)tools\wintun.dll;$(_Out)tools\tun2socks.exe;$(_Out)agent.dex;$(_Out)companion\cicipda-companion.apk;$(_Out)companion\companion.json;$(_Out)companion\companion.json.sig" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(_Required.Identity)')" Text="Required runtime file missing from output: %(_Required.Identity)" />
+  </Target>
 </Project>

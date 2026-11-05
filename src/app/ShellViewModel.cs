@@ -165,6 +165,8 @@ public sealed class ShellViewModel : Observable
         new IndicatorRow { Title = "Device connected" }, new IndicatorRow { Title = "Companion installed" }, new IndicatorRow { Title = "Companion running" },
         new IndicatorRow { Title = "Tunnel connected" }, new IndicatorRow { Title = "Windows network configured" }, new IndicatorRow { Title = "Internet verified" },
     };
+    public string HotspotText { get => _hs; private set => Set(ref _hs, value); }
+    string _hs = "";
     public string PhoneNetworkText { get => _pn; private set => Set(ref _pn, value); }
     string _pn = "—";
     public bool ShowStages { get => _showStages; private set => Set(ref _showStages, value); }
@@ -521,6 +523,15 @@ public sealed class ShellViewModel : Observable
         Indicators[0].On = ind.DeviceConnected; Indicators[1].On = ind.CompanionInstalled; Indicators[2].On = ind.CompanionRunning;
         Indicators[3].On = ind.TunnelConnected; Indicators[4].On = ind.NetworkConfigured; Indicators[5].On = ind.InternetVerified;
         PhoneNetworkText = string.IsNullOrEmpty(Orch.PhoneNetwork) ? "—" : Orch.PhoneNetwork;
+        var hs = Orch.Hotspot;
+        HotspotText = !Settings.Current.ShareWifi && hs.State == HotspotState.Unavailable ? "" : hs.State switch
+        {
+            HotspotState.Unavailable => "Wi-Fi sharing: not available — " + hs.Detail, HotspotState.Available => "Wi-Fi sharing: available",
+            HotspotState.Starting => "Wi-Fi sharing: starting…", HotspotState.Active => "Wi-Fi sharing: hotspot active — " + hs.Detail,
+            HotspotState.ClientConnected => "Wi-Fi sharing: client connected — " + hs.Detail,
+            HotspotState.ClientInternetVerified => "Wi-Fi sharing: client internet verified — " + hs.Detail,
+            _ => "Wi-Fi sharing failed: " + hs.Detail,
+        };
         ShowStages = Orch.IsBusy || Orch.IsActive || Orch.State == ConnState.Error;
     }
 

@@ -45,6 +45,7 @@ public sealed class JournalState
     public int ForwardPort { get; set; }
     public List<BypassRoute> BypassRoutes { get; set; } = new();
     public bool HotspotActive { get; set; }
+    public string? HotspotAdapter { get; set; }
     public bool IsEmpty => Tun2SocksPid == 0 && ForwardPort == 0 && BypassRoutes.Count == 0 && !HotspotActive;
 }
 public sealed record BypassRoute(string Prefix, int IfIndex);
@@ -68,9 +69,9 @@ public sealed class RecoveryJournal
             try { var p = Process.GetProcessById(s.Tun2SocksPid); if (p.ProcessName.StartsWith("tun2socks", StringComparison.OrdinalIgnoreCase)) { p.Kill(true); Log.Info("recovery", "Stopped orphan tun2socks."); } } catch { }
         }
         foreach (var r in s.BypassRoutes)
-            await WinNet.Netsh("interface", "ipv4", "delete", "route", $"prefix={r.Prefix}", $"interface={r.IfIndex}", "nexthop=0.0.0.0");
+            await WinNet.Netsh(NetshPlan.DeleteBypass(r.Prefix, r.IfIndex));
         if (s.ForwardPort > 0 && s.AdbSerial != null) await adb.RemoveForwardAsync(s.AdbSerial, s.ForwardPort);
-        if (s.HotspotActive) await Hotspot.StopAsync();
+        if (s.HotspotActive) await new HotspotService().StopAsync();
         Reset();
     }
 }
@@ -122,38 +123,27 @@ public sealed class TunnelNetwork : IDisposable
         Log.Ok("adapter", $"Virtual adapter {AdapterName} created (interface {IfIndex}).");
         onAdapter?.Invoke();
 
-        string idx = IfIndex.ToString();
-        await Must("set address", "interface", "ipv4", "set", "address", $"name={idx}", "source=static", $"address={TunAddress}", "mask=255.255.255.0");
-        await WinNet.Netsh("interface", "ipv4", "set", "interface", $"name={idx}", "metric=1");
-        await WinNet.Netsh("interface", "ipv4", "set", "subinterface", $"interface={idx}", $"mtu={Math.Clamp(s.Mtu, 576, 1500)}", "store=active");
-        Log.Ok("adapter", $"Adapter address {TunAddress}/24 set.");
-
-        await Must("set dns", "interface", "ipv4", "set", "dnsservers", $"name={idx}", "source=static", $"address={s.DnsPrimary}", "validate=no");
-        if (!string.IsNullOrWhiteSpace(s.DnsSecondary))
-            await WinNet.Netsh("interface", "ipv4", "add", "dnsservers", $"name={idx}", $"address={s.DnsSecondary}", "index=2", "validate=no");
-        Log.Ok("dns", $"DNS set to {s.DnsPrimary}{(string.IsNullOrWhiteSpace(s.DnsSecondary) ? "" : ", " + s.DnsSecondary)} (resolved through the phone).");
-
-        if (bypassHost != null && origIf > 0)
+        int idx = IfIndex;
+        string? bypassPrefix = bypassHost != null && origIf > 0 ? bypassHost + "/32" : null;
+        foreach (var (what, args, required) in NetshPlan.Apply(s, idx, TunAddress, bypassPrefix, origIf))
         {
-            var prefix = bypassHost + "/32";
-            await Must("bypass route", "interface", "ipv4", "add", "route", $"prefix={prefix}", $"interface={origIf}", "nexthop=0.0.0.0", "metric=1", "store=active");
-            var br = new BypassRoute(prefix, origIf);
-            _bypass.Add(br); _journal.State.BypassRoutes.Add(br); _journal.Save();
-            Log.Info("route", $"Transport host {bypassHost} pinned to its original path (prevents a routing loop).");
+            if (required) await Must(what, args); else { var r0 = await WinNet.Netsh(args); if (!r0.Ok) Log.Warn("network", $"{what} failed: {r0.Combined}"); }
+            if (what == "bypass route")
+            {
+                var br = new BypassRoute(bypassPrefix!, origIf);
+                _bypass.Add(br); _journal.State.BypassRoutes.Add(br); _journal.Save();      // journal immediately: recovery must know about it
+                Log.Info("route", $"Transport host {bypassHost} pinned to its original path (prevents a routing loop).");
+            }
         }
-
-        // Two /1 routes override the default route without deleting it, so cleanup is trivial and loss of the tunnel never strands the PC.
-        foreach (var p in new[] { "0.0.0.0/1", "128.0.0.0/1" })
-            await Must("add route " + p, "interface", "ipv4", "add", "route", $"prefix={p}", $"interface={idx}", "nexthop=0.0.0.0", "metric=1", "store=active");
+        Log.Ok("adapter", $"Adapter address {TunAddress}/24, MTU {NetshPlan.ClampMtu(s.Mtu)} set.");
+        Log.Ok("dns", $"DNS set to {s.DnsPrimary}{(string.IsNullOrWhiteSpace(s.DnsSecondary) ? "" : ", " + s.DnsSecondary)} (resolved through the phone).");
         Log.Ok("route", "Default traffic now routed through the tunnel (0.0.0.0/1 + 128.0.0.0/1).");
 
         if (s.Ipv6LeakProtection)
         {
             // Send IPv6 into the tunnel too so it cannot bypass it; the phone side may not have IPv6, in which case apps fall back to IPv4.
-            var r = await WinNet.Netsh("interface", "ipv6", "set", "address", $"interface={idx}", "address=fd66:6c1c:6f00::2/64", "store=active");
-            if (r.Ok)
-                foreach (var p in new[] { "::/1", "8000::/1" })
-                    await WinNet.Netsh("interface", "ipv6", "add", "route", $"prefix={p}", $"interface={idx}", "nexthop=::", "metric=1", "store=active");
+            var r = await WinNet.Netsh(NetshPlan.SetIpv6Address(idx));
+            if (r.Ok) foreach (var p in NetshPlan.V6HalfRoutes) await WinNet.Netsh(NetshPlan.AddIpv6Route(p, idx));
             else Log.Warn("route", "IPv6 leak protection could not be applied: " + r.Combined);
         }
     }
@@ -168,7 +158,7 @@ public sealed class TunnelNetwork : IDisposable
     {
         foreach (var b in _bypass.ToList())
         {
-            var r = await WinNet.Netsh("interface", "ipv4", "delete", "route", $"prefix={b.Prefix}", $"interface={b.IfIndex}", "nexthop=0.0.0.0");
+            var r = await WinNet.Netsh(NetshPlan.DeleteBypass(b.Prefix, b.IfIndex));
             if (!r.Ok) Log.Warn("route", $"Could not remove route {b.Prefix}: {r.Combined}");
         }
         _bypass.Clear();
@@ -202,7 +192,7 @@ public static class Verifier
     }
 
     public static Task<CheckResult> DefaultRoute(int expectedIfIndex) => Time("route", "Default route", true,
-        "Another VPN or adapter has a lower metric. Disconnect other VPNs and retry.", () =>
+        "Another adapter or VPN has priority for internet traffic. Disconnect that VPN, or for hotspot modes unplug Ethernet / disable other Wi-Fi adapters, then retry.", () =>
     {
         int best = WinNet.BestInterfaceFor(IPAddress.Parse("1.1.1.1"));
         var ni = WinNet.FindByIndex(best);
@@ -254,60 +244,5 @@ public static class Verifier
             return sw.Elapsed;
         }
         catch { return null; }
-    }
-}
-
-public static class Hotspot
-{
-    public static bool Active { get; private set; }
-
-    const string StartScript = @"
-$ErrorActionPreference='Stop'
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$null=[Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]
-$null=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
-$null=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
-$asTask=([System.WindowsRuntimeSystemExtensions].GetMethods()|Where-Object{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'})[0]
-function Await($op,$t){$m=$asTask.MakeGenericMethod($t);$x=$m.Invoke($null,@($op));$x.Wait(-1)|Out-Null;$x.Result}
-$p=[Windows.Networking.Connectivity.NetworkInformation]::GetInternetConnectionProfile()
-if($null -eq $p){throw 'No internet connection profile is available to share.'}
-$m=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($p)
-$cfg=New-Object Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration
-$cfg.Ssid=$env:CICI_SSID
-$cfg.Passphrase=$env:CICI_PASS
-$null=$m.ConfigureAccessPointAsync($cfg)
-$r=Await ($m.StartTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-if($r.Status -ne 'Success'){throw ('Hotspot start failed: '+$r.Status+' '+$r.AdditionalErrorMessage)}
-'OK'
-";
-
-    const string StopScript = @"
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$null=[Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]
-$null=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
-$asTask=([System.WindowsRuntimeSystemExtensions].GetMethods()|Where-Object{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'})[0]
-$p=[Windows.Networking.Connectivity.NetworkInformation]::GetInternetConnectionProfile()
-if($null -ne $p){$m=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($p)
-$op=$m.StopTetheringAsync();$t=[System.WindowsRuntimeSystemExtensions]::AsTask([Windows.Foundation.IAsyncOperation[Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult]]$op);$t.Wait(-1)|Out-Null}
-'OK'
-";
-
-    /// <summary>Starts Windows Mobile Hotspot with the active internet profile. Passphrase travels via environment, never the command line.</summary>
-    public static async Task<(bool ok, string message)> StartAsync(string ssid, string passphrase, CancellationToken ct = default)
-    {
-        if (ssid.Length is < 1 or > 32) return (false, "SSID must be 1-32 characters.");
-        if (passphrase.Length is < 8 or > 63) return (false, "Passphrase must be 8-63 characters.");
-        Log.RegisterSecret(passphrase);
-        var r = await ProcessRunner.RunAsync("powershell.exe", new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", StartScript },
-            TimeSpan.FromSeconds(40), ct, env: new Dictionary<string, string> { ["CICI_SSID"] = ssid, ["CICI_PASS"] = passphrase });
-        Active = r.Ok && r.Stdout.Contains("OK");
-        return (Active, Active ? "Hotspot started." : (r.Combined.Length > 0 ? r.Combined : "Hotspot start failed."));
-    }
-
-    public static async Task StopAsync()
-    {
-        var r = await ProcessRunner.RunAsync("powershell.exe", new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", StopScript }, TimeSpan.FromSeconds(30));
-        if (!r.Ok) Log.Warn("hotspot", "Stop reported: " + r.Combined);
-        Active = false;
     }
 }

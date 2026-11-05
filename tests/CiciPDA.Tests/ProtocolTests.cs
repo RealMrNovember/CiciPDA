@@ -230,6 +230,7 @@ public class StorageTests
     public void Passphrase_HasRequestedLength() => Assert.Equal(14, Secret.GeneratePassphrase().Length);
 }
 
+[Collection("AppPaths")]
 public class OrchestratorTests
 {
     [Fact]
@@ -259,5 +260,60 @@ public class OrchestratorTests
         Assert.Equal(1234, j2.State.ForwardPort); Assert.Single(j2.State.BypassRoutes);
         j2.Reset();
         Assert.True(new RecoveryJournal().State.IsEmpty);
+    }
+}
+
+[Collection("AppPaths")]
+public class AdbLocationTests
+{
+    static string FakeInstall()
+    {
+        var d = Path.Combine(Path.GetTempPath(), "cici-inst-" + Guid.NewGuid());
+        Directory.CreateDirectory(Path.Combine(d, "adb"));
+        File.WriteAllText(Path.Combine(d, "adb", "adb.exe"), "x");
+        return d;
+    }
+
+    [Fact]
+    public void InstalledApp_UsesBundledAdb_WithoutSdkOrConfig()
+    {
+        var d = FakeInstall(); AppPaths.BaseDirOverride = d;
+        try
+        {
+            var found = new AdbService(() => new AppSettings()).Locate();
+            Assert.Equal(Path.Combine(d, "adb", "adb.exe"), found);   // bundled copy wins over PATH / SDK
+        }
+        finally { AppPaths.BaseDirOverride = null; }
+    }
+
+    [Fact]
+    public void ConfiguredPath_OverridesBundledAdb()
+    {
+        var d = FakeInstall(); AppPaths.BaseDirOverride = d;
+        var custom = Path.Combine(d, "custom-adb.exe"); File.WriteAllText(custom, "x");
+        try { Assert.Equal(custom, new AdbService(() => new AppSettings { AdbPath = custom }).Locate()); }
+        finally { AppPaths.BaseDirOverride = null; }
+    }
+
+    [Fact]
+    public void BrokenConfiguredPath_FallsBackToBundledAdb()
+    {
+        var d = FakeInstall(); AppPaths.BaseDirOverride = d;
+        try { Assert.Equal(Path.Combine(d, "adb", "adb.exe"), new AdbService(() => new AppSettings { AdbPath = @"C:\nope\adb.exe" }).Locate()); }
+        finally { AppPaths.BaseDirOverride = null; }
+    }
+
+    [Fact]
+    public void RepositoryContainsRequiredBundledAdbFiles()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var t = Path.Combine(d.FullName, "third_party", "adb");
+            if (!Directory.Exists(t)) continue;
+            foreach (var f in new[] { "adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll" }) Assert.True(File.Exists(Path.Combine(t, f)), f + " missing from third_party/adb");
+            Assert.False(Directory.Exists(Path.Combine(d.FullName, "data")), "the removed data directory must not come back");
+            return;
+        }
+        Assert.Fail("third_party/adb not found");
     }
 }

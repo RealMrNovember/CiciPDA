@@ -17,6 +17,8 @@ AppPublisher=CiciByte
 DefaultDirName={autopf}\CiciByte
 DefaultGroupName=CiciByte
 PrivilegesRequired=admin
+; Lets automation validate the installer without UAC: setup.exe /CURRENTUSER /DIR=...
+PrivilegesRequiredOverridesAllowed=commandline
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\artifacts
@@ -44,11 +46,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Registry]
 ; The virtual adapter, routes and DNS need administrator rights; ask for them at launch instead of making the user find a setting.
-Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers"; ValueType: string; ValueName: "{app}\CiciPDA.exe"; ValueData: "~ RUNASADMIN"; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers"; ValueType: string; ValueName: "{app}\CiciPDA.exe"; ValueData: "~ RUNASADMIN"; Flags: uninsdeletevalue; Check: IsAdminInstallMode
 
 [Run]
 Filename: "{app}\CiciPDA.exe"; Description: "Launch CiciPDA"; Flags: nowait postinstall skipifsilent
-
-[UninstallRun]
-; Safety net: remove a leftover adapter/forward if the app was killed. The app also self-heals on next start.
-Filename: "{app}\adb\adb.exe"; Parameters: "forward --remove-all"; Flags: runhidden; RunOnceId: "AdbForwards"
