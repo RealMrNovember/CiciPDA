@@ -60,7 +60,7 @@ Settings, history and logs live per user in `%LocalAppData%\CiciByte\CiciPDA`. U
 
 ### Updates
 
-CiciPDA checks the signed release channel shortly after start and every six hours (toggle in **Settings**). When a new version exists an **Update** button appears; the installer is downloaded only from GitHub, verified against a signed SHA-256, and run after you confirm — your connection is closed and your network settings restored first. The Android companion is updated the same way (signed metadata → hash → pinned signer certificate → Android's own signature check).
+CiciPDA checks the signed release channel shortly after start and every six hours (toggle in **Settings**), and the **refresh button in the header** checks on demand. When a new version exists a green **Update** pill appears in the header. Press it once: it shows the download percentage with a progress bar, then *Verifying* and *Installing*, and is disabled meanwhile so it cannot be pressed twice. The installer is downloaded only from GitHub, verified against a signed SHA-256, and run after you confirm — your connection is closed and your network settings restored first, and CiciPDA restarts afterwards (with the usual UAC prompt). The Android companion is updated the same way (signed metadata → hash → pinned signer certificate → Android's own signature check).
 
 ## Platform support
 
@@ -82,7 +82,7 @@ Release assets are named per platform so ports can be added later without renami
 | **Android Wi-Fi hotspot** | You join the phone's hotspot; CiciPDA detects it, verifies the internet and monitors the interface. No tunnel. | — | Implemented · awaiting validation |
 | **iPhone Personal Hotspot** | Wi-Fi **or** Apple USB Ethernet adapter that Windows already provides; CiciPDA verifies and monitors it. **No Android companion and no CiciPDA tunnel.** | — | Implemented · awaiting validation |
 
-Optional: **Wi-Fi sharing from the PC** through Windows Mobile Hotspot, bound to the CiciPDA adapter only (never an unrelated connection), started only after internet verification.
+Optional: **Wi-Fi sharing from the PC** through Windows Mobile Hotspot, controlled from the *Wi-Fi sharing* card on the Connect page. It is bound to the CiciPDA adapter only (never an unrelated connection), starts only after the internet has been verified, never takes over a hotspot you already run, and restores your previous hotspot name, password and band when it stops.
 
 ## How it works
 
@@ -102,12 +102,14 @@ Details: [protocol and limits](docs/PROTOCOL.md) · [Android companion & OEM not
 
 ## Features
 
+- **Wi-Fi sharing card** on the Connect page: on/off switch, network name, masked password with Show/Copy, live state (waiting for a verified connection → starting → active → device connected → device internet verified, or the exact reason it is unavailable), connected-device count and Start/Stop buttons
 - Connect · Live Monitor · Activity · Connection History · Devices · Network Diagnostics · Settings · Help
 - Real-time download/upload, session totals, latency, probe loss, uptime, phone signal and network type
 - 14 diagnostic tests with plain-language results and suggested fixes
 - Local, persistent connection history and a severity-tagged activity feed (secrets are masked)
 - Keyboard shortcuts: `Ctrl+1…8` pages, `Ctrl+Enter` connect/disconnect, `F5` refresh devices
 - English and Turkish interface, two themes
+- Header controls: connection state, **Update** pill with progress, **Check for updates**, notifications, version
 
 ## Security & privacy
 
@@ -122,7 +124,7 @@ Details: [protocol and limits](docs/PROTOCOL.md) · [Android companion & OEM not
 
 - Not a full layer-3 VPN and **not WireGuard**: TCP and UDP datagrams are relayed (Windows DNS is ordinary UDP/53 sent through the phone to the DNS servers in Settings); ICMP (ping) is not carried; IP fragments are dropped. IPv6 is routed into the tunnel only when leak protection is on and works only if the phone's network has IPv6. iPhone and hotspot-join modes are not encrypted by CiciPDA.
 - Android may stop background apps on aggressive battery managers; CiciPDA detects it and reconnects. See the [OEM notes](docs/ANDROID_COMPANION.md).
-- **Nothing has been validated on a physical phone yet.** The automated suite (85 tests, including the real Java relay over loopback) cannot replace it; the checklist is in [docs/HARDWARE_TEST_PLAN.md](docs/HARDWARE_TEST_PLAN.md) and the honest status is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+- **Not validated end to end on hardware yet.** On a real Android 16 phone the device detection, authorization, signed companion install, foreground service and encrypted channel have run, and the Windows virtual adapter and network configuration were created; the final internet verification (DNS through the phone) has **not** passed yet, so Wi-Fi sharing has never actually started. The automated suite (104 tests, including the real Java relay and the real bundled `tun2socks.exe`/`netsh` command lines) cannot replace it; the checklist is in [docs/HARDWARE_TEST_PLAN.md](docs/HARDWARE_TEST_PLAN.md) and the honest status is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Build from source
 

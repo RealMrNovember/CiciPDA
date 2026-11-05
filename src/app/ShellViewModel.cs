@@ -167,11 +167,11 @@ public sealed class ShellViewModel : Observable
         new IndicatorRow { Title = "Tunnel connected" }, new IndicatorRow { Title = "Windows network configured" }, new IndicatorRow { Title = "Internet verified" },
     };
     // ---- Wi-Fi sharing card (Connect page) ----
-    public bool ShareEnabled => Settings.Current.ShareWifi;
+    public bool ShareEnabled => _demo || Settings.Current.ShareWifi;
     public string ShareSsid => Settings.Current.HotspotSsid;
     bool _showPass;
     public bool ShowSharePassword { get => _showPass; set { if (Set(ref _showPass, value)) Raise(nameof(SharePasswordDisplay)); } }
-    public string SharePasswordDisplay { get { var p = Secret.Unprotect(Settings.Current.HotspotPasswordProtected); return p.Length == 0 ? "(not set)" : _showPass ? p : new string('\u2022', Math.Min(p.Length, 12)); } }
+    public string SharePasswordDisplay { get { if (_demo) return "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"; var p = Secret.Unprotect(Settings.Current.HotspotPasswordProtected); return p.Length == 0 ? "(not set)" : _showPass ? p : new string('\u2022', Math.Min(p.Length, 12)); } }
     public string ShareStateText { get => _shState; private set => Set(ref _shState, value); }
     string _shState = "";
     public Brush ShareStateBrush { get => _shBrush; private set => Set(ref _shBrush, value); }
@@ -595,6 +595,7 @@ public sealed class ShellViewModel : Observable
         Stages.Clear();
         var titles = new[] { "Detect phone", "Check USB debugging authorization", "Check Android companion", "Install / update companion", "Start companion service", "Establish secure tunnel", "Create virtual adapter", "Configure routes and DNS", "Verify internet access" };
         for (int i = 0; i < titles.Length; i++) Stages.Add(new StageRow { Title = titles[i], Detail = det[i], State = ItemState.Ok, Skipped = i == 3 });
+        ShareStateText = "A connected device confirmed DNS and HTTPS. Sharing works."; ShareStateBrush = Theme.Brush("Green"); ShareClientsText = "1 device(s) connected"; ShowSharePassword = false;
         UpdateAvailable = true;
         if (Environment.GetCommandLineArgs().Contains("--demo-update")) { _update = new UpdateInfo(new UpdateManifest { Version = "2.2.0" }, new Version(2, 2, 0), new Uri("https://github.com/")); UpdateBusy = true; SetUpdatePhase("Downloading", "42%", 0.42, false); }
         Raise(nameof(UpdateBanner));
