@@ -84,3 +84,21 @@ public class ReleaseArtifactTests
         Assert.False(ReleaseTrust.IsDevelopmentTrust);
     }
 }
+
+/// <summary>Talks to the real GitHub release channel. Runs only when CICI_LIVE=1 (needs a published release).</summary>
+public class LiveUpdateChannelTests
+{
+    [Fact]
+    public async Task RealChannel_OfferedToOlderVersion_DownloadsAndVerifies_AndNotOfferedToCurrent()
+    {
+        if (Environment.GetEnvironmentVariable("CICI_LIVE") != "1") return;
+        var u = new AppUpdater();
+        var offered = await u.CheckAsync(CancellationToken.None, new Version(2, 0, 0));
+        Assert.NotNull(offered);
+        Assert.True(offered!.Version >= new Version(2, 1, 0));
+        Assert.Null(await u.CheckAsync(CancellationToken.None, offered.Version));             // already current: nothing offered
+        var path = await u.DownloadAsync(offered, null, CancellationToken.None);               // verifies the signed SHA-256 internally
+        try { Assert.True(new FileInfo(path).Length > 10_000_000); Assert.EndsWith(".exe", path); }
+        finally { try { Directory.Delete(Path.GetDirectoryName(path)!, true); } catch { } }
+    }
+}

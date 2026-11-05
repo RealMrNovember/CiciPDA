@@ -506,6 +506,17 @@ public sealed class ShellViewModel : Observable
         var rnd = new Random(7); var d = new double[120]; var u = new double[120];
         for (int i = 0; i < 120; i++) { d[i] = 2e6 + 2.5e6 * Math.Abs(Math.Sin(i / 9.0)) + rnd.NextDouble() * 6e5; u[i] = 2e5 + 3e5 * Math.Abs(Math.Sin(i / 6.0 + 1)) + rnd.NextDouble() * 8e4; }
         DownHistory = d; UpHistory = u; ClockText = "14:32:07";
+        foreach (var i in Indicators) i.On = true;
+        PhoneNetworkText = "cellular, validated, metered";
+        string[] det = { "Pixel 7 (USB)", "USB debugging authorized", "Installed 2.0.0 (UpToDate); Android 14", "Already up to date", "Companion service running", "Encrypted channel up; phone reached the internet in 48 ms", "Wintun adapter up", "Routes, DNS and MTU configured", "Verified" };
+        Stages.Clear();
+        var titles = new[] { "Detect phone", "Check USB debugging authorization", "Check Android companion", "Install / update companion", "Start companion service", "Establish secure tunnel", "Create virtual adapter", "Configure routes and DNS", "Verify internet access" };
+        for (int i = 0; i < titles.Length; i++) Stages.Add(new StageRow { Title = titles[i], Detail = det[i], State = ItemState.Ok, Skipped = i == 3 });
+        ShowStages = true; ShowAdminBanner = false;
+        Checklist.Clear();
+        foreach (var (t, h) in new[] { ("ADB is available", "Bundled with CiciPDA"), ("Connect the phone (USB, or ADB over Wi-Fi)", "1 device(s) seen by ADB"), ("Enable USB debugging and allow this computer", "Authorized: Pixel 7"), ("Administrator rights", "Running elevated"), ("Tunnel components present", "Wintun, tun2socks and phone helper found") })
+            Checklist.Add(new ChecklistItem { Title = t, Hint = h, State = ItemState.Ok });
+        Raise(nameof(GlobalType)); Raise(nameof(GlobalVpn)); Raise(nameof(GlobalNet)); Raise(nameof(GlobalUsage));
         foreach (var m in Methods) { m.Selected = m.Method == ConnectionMethod.PhoneVpn; m.Availability = m.Method <= ConnectionMethod.Usb ? "Device ready" : "Not detected"; m.AvailState = m.Method <= ConnectionMethod.Usb ? ItemState.Ok : ItemState.Warn; }
     }
 
@@ -537,15 +548,16 @@ public sealed class ShellViewModel : Observable
 
     public bool IsActive => Orch.IsActive;
     public bool IsBusy => Orch.IsBusy;
-    public string GlobalType => Orch.IsActive || Orch.IsBusy ? MethodName(Orch.Method) : "—";
-    public string GlobalVpn => Orch.Vpn == PathState.Up ? "VPN: on" : "VPN: off";
-    public string GlobalNet => Orch.Internet switch { NetState.Reachable => "Network: online", NetState.Limited => "Network: limited", _ => "Network: —" };
-    public string GlobalUsage => Orch.IsActive ? Fmt.Bytes(Orch.SessionBytes) : "—";
+    public string GlobalType => _demo ? "Phone VPN" : Orch.IsActive || Orch.IsBusy ? MethodName(Orch.Method) : "—";
+    public string GlobalVpn => _demo ? "VPN: on" : Orch.Vpn == PathState.Up ? "VPN: on" : "VPN: off";
+    public string GlobalNet => _demo ? "Network: online" : Orch.Internet switch { NetState.Reachable => "Network: online", NetState.Limited => "Network: limited", _ => "Network: —" };
+    public string GlobalUsage => _demo ? "1.33 GB" : Orch.IsActive ? Fmt.Bytes(Orch.SessionBytes) : "—";
 
     static string MethodName(ConnectionMethod m) => m switch { ConnectionMethod.PhoneVpn => "Phone VPN", ConnectionMethod.Usb => "USB", ConnectionMethod.AndroidHotspot => "Android hotspot", _ => "iPhone hotspot" };
 
     void UpdateAvailability()
     {
+        if (_demo) return;
         bool tools = File.Exists(AppPaths.Tun2Socks) && File.Exists(AppPaths.WintunDll) && File.Exists(AppPaths.AgentDex) && !Orch.AdbMissing;
         foreach (var m in Methods)
         {
@@ -569,6 +581,7 @@ public sealed class ShellViewModel : Observable
     // ---- dynamic checklist ----
     void RebuildChecklist()
     {
+        if (_demo) return;
         var m = Settings.Current.LastMethod; var items = new List<ChecklistItem>();
         if (m is ConnectionMethod.PhoneVpn or ConnectionMethod.Usb)
         {

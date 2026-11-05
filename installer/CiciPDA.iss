@@ -26,6 +26,7 @@ OutputBaseFilename=CiciPDA-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 UninstallDisplayIcon={app}\CiciPDA.exe
+SetupIconFile=..\src\app\app.ico
 WizardStyle=modern
 ; Code signing: pass /Ssigntool="signtool sign ..." to ISCC and uncomment the next line for release builds.
 ; SignTool=signtool

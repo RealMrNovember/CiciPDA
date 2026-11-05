@@ -19,7 +19,9 @@ $iscc = @("$env:ProgramFiles (x86)\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\In
 if (-not $iscc) { Write-Warning "Inno Setup 6 not found. Published files are in $pub; install Inno Setup and re-run to create the installer."; exit 0 }
 $args = @("/DAppVersion=$Version", "/DPublishDir=$pub")
 if ($SignTool) { $args += "/Ssigntool=$SignTool" }
+Remove-Item (Join-Path $root "artifacts\CiciPDA-Setup-$Version.exe") -Force -ErrorAction SilentlyContinue   # never validate a stale installer
 & $iscc @args "$PSScriptRoot\CiciPDA.iss"
+if ($LASTEXITCODE) { throw "Inno Setup failed ($LASTEXITCODE)" }
 
 # ---- signed update manifest (consumed by the in-app updater) ----
 $setup = Join-Path $root "artifacts\CiciPDA-Setup-$Version.exe"
