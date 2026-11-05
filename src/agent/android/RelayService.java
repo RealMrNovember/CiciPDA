@@ -35,7 +35,7 @@ public class RelayService extends Service {
     public static final String ACTION_START = "app.cicibyte.cicipda.START";
     public static final String ACTION_STOP = "app.cicibyte.cicipda.STOP";
     public static final String ACTION_UNPAIR = "app.cicibyte.cicipda.UNPAIR";
-    public static final String VERSION = "2.1.1";
+    public static final String VERSION = "2.1.3";
     static final String CHANNEL = "relay";
     static volatile Relay relay;
 
@@ -133,7 +133,7 @@ public class RelayService extends Service {
             PendingIntent pi = PendingIntent.getActivity(this, 0, open, piFlags);
             Notification n = b.setContentTitle("CiciPDA is sharing this phone's connection")
                 .setContentText("Paired Windows PC via USB debugging. Disconnect from the PC to stop.")
-                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth).setOngoing(true).setContentIntent(pi).build();
+                .setSmallIcon(R.drawable.ic_stat).setOngoing(true).setContentIntent(pi).build();
             if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else startForeground(1, n);
             return true;

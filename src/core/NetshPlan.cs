@@ -14,7 +14,7 @@ public static class NetshPlan
     public static int ClampMtu(int mtu) => Math.Clamp(mtu, 576, 1500);
 
     public static string[] SetAddress(int idx, string address) => new[] { "interface", "ipv4", "set", "address", $"name={idx}", "source=static", $"address={address}", $"mask={TunNetmask}" };
-    public static string[] SetMetric(int idx) => new[] { "interface", "ipv4", "set", "interface", $"name={idx}", "metric=1" };
+    public static string[] SetMetric(int idx) => new[] { "interface", "ipv4", "set", "interface", $"interface={idx}", "metric=1" };
     public static string[] SetMtu(int idx, int mtu) => new[] { "interface", "ipv4", "set", "subinterface", $"interface={idx}", $"mtu={ClampMtu(mtu)}", "store=active" };
     public static string[] SetDns(int idx, string primary) => new[] { "interface", "ipv4", "set", "dnsservers", $"name={idx}", "source=static", $"address={primary}", "validate=no" };
     public static string[] AddDns(int idx, string secondary) => new[] { "interface", "ipv4", "add", "dnsservers", $"name={idx}", $"address={secondary}", "index=2", "validate=no" };

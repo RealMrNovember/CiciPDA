@@ -80,7 +80,7 @@ public class ReleaseArtifactTests
         var setup = Path.Combine(dir, m.Installer);
         Assert.Equal(m.Sha256, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(setup))).ToLowerInvariant());
         var c = ReleaseTrust.Verify(Path.Combine(dir, "companion.json"), Path.Combine(dir, "companion.json.sig"), dir, "artifacts");
-        Assert.Equal(20101, c.Meta.VersionCode);
+        Assert.Equal(20103, c.Meta.VersionCode);
         Assert.False(ReleaseTrust.IsDevelopmentTrust);
     }
 }

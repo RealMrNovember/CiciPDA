@@ -93,6 +93,13 @@ public sealed class TunnelNetwork : IDisposable
     public bool Ipv6Protected { get; private set; }
     public string RollbackReport { get; private set; } = "";
 
+    /// <summary>
+    /// tun2socks (cobra/pflag) takes GNU-style options: long names need TWO dashes. A single dash makes pflag read "-loglevel" as the
+    /// cluster of short flags -l -o -g ... and abort ("unknown shorthand flag"), which is what broke the first real-device run.
+    /// </summary>
+    public static string[] BuildTun2SocksArgs(int socksPort) =>
+        new[] { "--device", $"wintun://{AdapterName}", "--proxy", $"socks5://127.0.0.1:{socksPort}", "--loglevel", "info" };
+
     public TunnelNetwork(RecoveryJournal journal) { _journal = journal; }
 
     public async Task StartAsync(int socksPort, AppSettings s, IPAddress? bypassHost, CancellationToken ct, Action? onAdapter = null)
@@ -107,7 +114,7 @@ public sealed class TunnelNetwork : IDisposable
         int origIf = bypassHost != null ? WinNet.BestInterfaceFor(bypassHost) : -1;
 
         Log.Info("tunnel", "Starting tun2socks (Wintun adapter + packet engine).");
-        _t2s = new ManagedProcess(AppPaths.Tun2Socks, new[] { "-device", $"wintun://{AdapterName}", "-proxy", $"socks5://127.0.0.1:{socksPort}", "-loglevel", "info" }, workDir: AppPaths.ToolsDir);
+        _t2s = new ManagedProcess(AppPaths.Tun2Socks, BuildTun2SocksArgs(socksPort), workDir: AppPaths.ToolsDir);
         var errs = new List<string>();
         _t2s.OutLine += l => Log.Debug("tun2socks", l);
         _t2s.ErrLine += l => { lock (errs) errs.Add(l); Log.Debug("tun2socks", l); };

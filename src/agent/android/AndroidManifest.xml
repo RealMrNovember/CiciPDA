@@ -10,6 +10,9 @@
 
     <application
         android:label="CiciPDA Companion"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
         android:allowBackup="false"
         android:supportsRtl="true">
 

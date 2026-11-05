@@ -241,3 +241,54 @@ public sealed class AgentFixtureWithKey : IDisposable
     }
     public void Dispose() => _p?.Dispose();
 }
+
+
+public class Tun2SocksArgsTests
+{
+    [Fact]
+    public void Arguments_UseDoubleDashLongOptions()
+    {
+        var a = TunnelNetwork.BuildTun2SocksArgs(1080);
+        Assert.Equal(new[] { "--device", "wintun://CiciPDA", "--proxy", "socks5://127.0.0.1:1080", "--loglevel", "info" }, a);
+        Assert.DoesNotContain(a, x => x.StartsWith("-") && !x.StartsWith("--"));
+    }
+
+    [Fact]
+    public async Task Arguments_AreAcceptedByTheRealBundledTun2Socks()
+    {
+        // Ask the real executable: every option we pass must exist in its own --help output (no phone or admin rights needed).
+        string? exe = null;
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null && exe == null; d = d.Parent)
+        {
+            var c = Path.Combine(d.FullName, "src", "app", "tools", "tun2socks.exe");
+            if (File.Exists(c)) exe = c;
+        }
+        if (exe == null) return;                                           // tools are fetched, not committed
+        var help = await ProcessRunner.RunAsync(exe, new[] { "--help" }, TimeSpan.FromSeconds(15));
+        foreach (var opt in TunnelNetwork.BuildTun2SocksArgs(1080).Where(a => a.StartsWith("--")))
+            Assert.Contains(opt, help.Combined);
+        // and the old, broken spelling really is rejected by this binary
+        var bad = await ProcessRunner.RunAsync(exe, new[] { "-loglevel", "info", "--version" }, TimeSpan.FromSeconds(15));
+        Assert.Contains("unknown shorthand flag", bad.Combined);
+    }
+}
+
+public class NetshSyntaxTests
+{
+    [Fact]
+    public void SetInterface_UsesTheParameterNameNetshExpects()
+    {
+        // `netsh interface ipv4 set interface` takes interface=, not name= (verified against the built-in netsh help).
+        var cmd = string.Join(" ", NetshPlan.SetMetric(42));
+        Assert.Contains("interface=42", cmd); Assert.DoesNotContain("name=42", cmd);
+    }
+
+    [Theory]
+    [InlineData("set address", "[name=]")] [InlineData("set interface", "[interface=]")] [InlineData("set subinterface", "[interface=]")]
+    [InlineData("set dnsservers", "[name=]")] [InlineData("add dnsservers", "[name=]")] [InlineData("add route", "[interface=]")] [InlineData("delete route", "[interface=]")]
+    public async Task EveryCommandWeSend_MatchesTheNetshHelpOfThisWindows(string verb, string expectedParam)
+    {
+        var r = await ProcessRunner.RunAsync("netsh.exe", new[] { "interface", "ipv4" }.Concat(verb.Split(' ')).Concat(new[] { "?" }), TimeSpan.FromSeconds(15));
+        Assert.Contains(expectedParam, r.Combined);
+    }
+}

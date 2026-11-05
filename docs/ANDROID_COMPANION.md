@@ -1,6 +1,6 @@
 # Android companion: lifecycle, permissions and compatibility
 
-Package `app.cicibyte.cicipda`, currently **2.1.1 (versionCode 20101)**, written in Java, built without Gradle by `src/agent/build.ps1` (javac + d8 + aapt2 + apksigner). minSdk 24, targetSdk 34.
+Package `app.cicibyte.cicipda`, currently **2.1.3 (versionCode 20103)**, written in Java, built without Gradle by `src/agent/build.ps1` (javac + d8 + aapt2 + apksigner). minSdk 24, targetSdk 34.
 
 ## Lifecycle (what the PC does on Connect)
 1. `adb devices -l`: the device must be `device`. `unauthorized` -> the user taps **Allow** on the phone; CiciPDA never tries to bypass it.

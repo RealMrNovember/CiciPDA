@@ -55,7 +55,7 @@ public class TrustTests
     {
         var d = Copy();
         var m = Path.Combine(d, "companion.json");
-        File.WriteAllText(m, File.ReadAllText(m).Replace("20101", "29999"));
+        File.WriteAllText(m, File.ReadAllText(m).Replace("20103", "29999"));
         var ex = Assert.Throws<TrustException>(() => ReleaseTrust.Verify(m, m + ".sig", d, "t"));
         Assert.Contains("signature is invalid", ex.Message);
     }

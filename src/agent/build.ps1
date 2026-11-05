@@ -5,7 +5,7 @@
 # Requires: Android SDK build-tools + platform, and a JDK (Android Studio JBR is used if present).
 # Signing: set CICI_KEYSTORE / CICI_KS_PASS / CICI_KS_ALIAS for a release build; otherwise a local DEV keystore is created
 # in ..\..\release (git-ignored). Dev-signed APKs must never be published.
-param([string]$VersionName = '2.1.1', [int]$VersionCode = 20101)
+param([string]$VersionName = '2.1.3', [int]$VersionCode = 20103)
 $ErrorActionPreference = 'Stop'
 $jbr = if (Test-Path 'C:\Program Files\Android\Android Studio\jbr') { 'C:\Program Files\Android\Android Studio\jbr' } else { $env:JAVA_HOME }
 $env:JAVA_HOME = $jbr
@@ -30,14 +30,18 @@ if ($LASTEXITCODE) { throw 'd8 (legacy) failed' }
 Copy-Item "$out\classes.dex" "$appDir\agent.dex" -Force
 
 # 2) companion APK
-$apkSrc = @($relaySrc) + (Get-ChildItem "$root\android" -Filter *.java | ForEach-Object FullName)
+# resources (launcher icon, logo, notification icon): compile, then link with --java so R.java exists for javac
+New-Item -ItemType Directory "$out\gen" -Force | Out-Null
+& "$bt\aapt2.exe" compile --dir "$root\android\res" -o "$out\res.zip"
+if ($LASTEXITCODE) { throw 'aapt2 compile failed' }
+& "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar -R "$out\res.zip" --java "$out\gen" --manifest "$root\android\AndroidManifest.xml" --min-sdk-version 24 --target-sdk-version 34 --version-code $VersionCode --version-name $VersionName
+if ($LASTEXITCODE) { throw 'aapt2 link failed' }
+$apkSrc = @($relaySrc) + (Get-ChildItem "$root\android" -Filter *.java | ForEach-Object FullName) + (Get-ChildItem "$out\gen" -Recurse -Filter *.java | ForEach-Object FullName)
 & "$jbr\bin\javac.exe" --release 8 -Xlint:-options -cp $jar -d "$out\apkclasses" $apkSrc
 if ($LASTEXITCODE) { throw 'javac (apk) failed' }
 $acls = Get-ChildItem "$out\apkclasses" -Recurse -Filter *.class | ForEach-Object FullName
 & "$bt\d8.bat" --release --min-api 24 --lib $jar --output "$out\apk" $acls
 if ($LASTEXITCODE) { throw 'd8 (apk) failed' }
-& "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest "$root\android\AndroidManifest.xml" --min-sdk-version 24 --target-sdk-version 34 --version-code $VersionCode --version-name $VersionName
-if ($LASTEXITCODE) { throw 'aapt2 failed' }
 Push-Location "$out\apk"; & "$bt\aapt.exe" add "$out\base.apk" classes.dex | Out-Null; Pop-Location
 & "$bt\zipalign.exe" -f -p 4 "$out\base.apk" "$out\aligned.apk"
 if ($LASTEXITCODE) { throw 'zipalign failed' }
