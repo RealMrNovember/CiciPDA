@@ -1,109 +1,549 @@
-<Window x:Class="CiciPDA.MainWindow"
+<Window x:Class="CiciPDA.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="CiciPDA" Height="480" Width="720" WindowStartupLocation="CenterScreen"
-        Background="#1e1e1e" Foreground="#e0e0e0" TextElement.FontFamily="Segoe UI">
+        xmlns:local="clr-namespace:CiciPDA.App"
+        Title="CiciPDA" Width="1280" Height="760" MinWidth="1100" MinHeight="680"
+        Background="{DynamicResource Bg}" WindowStartupLocation="CenterScreen"
+        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
     <Window.Resources>
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="#0078d4"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="20,10"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Cursor" Value="Hand"/>
+        <!-- Metric: Header = label, Content = value -->
+        <Style x:Key="Metric" TargetType="HeaderedContentControl">
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#106ebe"/></Trigger>
-                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#3a3a3a"/><Setter Property="Foreground" Value="#888"/></Trigger>
-                            <Trigger Property="IsPressed" Value="True"><Setter Property="Background" Value="#005a9e"/></Trigger>
-                        </ControlTemplate.Triggers>
+                    <ControlTemplate TargetType="HeaderedContentControl">
+                        <StackPanel>
+                            <TextBlock Text="{TemplateBinding Header}" Style="{StaticResource Label}" TextTrimming="CharacterEllipsis"/>
+                            <ContentPresenter Margin="0,3,0,0" TextElement.FontSize="{TemplateBinding FontSize}" TextElement.FontWeight="{TemplateBinding FontWeight}" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </StackPanel>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Setter Property="FontSize" Value="15"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{DynamicResource Text}"/>
         </Style>
-        <Style TargetType="TextBlock" x:Key="Mono">
-            <Setter Property="FontFamily" Value="Consolas"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="#8ec07c"/>
+        <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{DynamicResource Muted}"/>
         </Style>
-        <Style TargetType="Separator">
-            <Setter Property="Margin" Value="0,12"/>
-            <Setter Property="Background" Value="#3a3a3a"/>
-        </Style>
+        <DataTemplate x:Key="CheckRow">
+            <Grid Margin="0,5">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                <Border Width="20" Height="20" CornerRadius="10" BorderThickness="1.5" BorderBrush="{Binding State, Converter={StaticResource StateBrush}}" VerticalAlignment="Top" Margin="0,1,0,0">
+                    <Path x:Name="ic" Style="{StaticResource Ico}" Width="11" Height="11" Data="{StaticResource IconAlert}" Stroke="{Binding State, Converter={StaticResource StateBrush}}" StrokeThickness="2"/>
+                </Border>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="{Binding Title}" FontSize="13" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Hint}" Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding State}" Value="Ok"><Setter TargetName="ic" Property="Data" Value="{StaticResource IconCheck}"/></DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Fail"><Setter TargetName="ic" Property="Data" Value="{StaticResource IconX}"/></DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Pending"><Setter TargetName="ic" Property="Data" Value="M12 12h.01"/></DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+        <Style x:Key="SettingRow" TargetType="Grid"><Setter Property="Margin" Value="0,7"/></Style>
     </Window.Resources>
-    
-    <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
 
-        <TextBlock Text="CiciPDA" FontSize="28" FontWeight="Light" Foreground="#fff" Margin="0,0,0,4"/>
-        <TextBlock Text="ADB Tether → Wi-Fi Hotspot" FontSize="13" Foreground="#888" Margin="0,0,0,16"/>
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
 
-        <Border Grid.Row="1" Background="#252526" CornerRadius="6" Padding="16">
+        <!-- ===== Header ===== -->
+        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Text="Status:" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="{Binding Status}" FontSize="16" FontWeight="Bold" Foreground="#4ec9b0" Margin="12,0,0,0"/>
-
-                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Detail}" Foreground="#ccc" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="208"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
+                    <Border Width="26" Height="26" CornerRadius="7" Background="{DynamicResource AccentGradient}">
+                        <Path Style="{StaticResource Ico}" Data="{StaticResource IconConnect}" Stroke="{DynamicResource OnAccent}" Width="15" Height="15" StrokeThickness="2.2"/>
+                    </Border>
+                    <TextBlock Text="CiciPDA" FontSize="16" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                    <Border CornerRadius="12" Background="{DynamicResource Panel2}" BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="12,4">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="8" Height="8" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontWeight="SemiBold" FontSize="12.5" Margin="8,0,0,0" AutomationProperties.LiveSetting="Polite"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource Chrome}" Command="{Binding Navigate}" CommandParameter="Activity" ToolTip="Notifications" AutomationProperties.Name="Notifications" Width="40">
+                        <Grid>
+                            <Path Style="{StaticResource Ico}" Data="{StaticResource IconBell}" Stroke="{DynamicResource Muted}"/>
+                            <Border Background="{DynamicResource Red}" CornerRadius="7" MinWidth="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,-6,0" Visibility="{Binding UnreadAlerts, Converter={x:Static local:PositiveToVisibility.Instance}}">
+                                <TextBlock Text="{Binding UnreadAlerts}" FontSize="9" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Button>
+                    <TextBlock Text="{Binding Version}" Style="{StaticResource MutedText}" FontSize="11" VerticalAlignment="Center" Margin="4,0,14,0"/>
+                    <Button x:Name="MinBtn" Style="{StaticResource Chrome}" AutomationProperties.Name="Minimize"><Path Data="M0 0h10" Stroke="{DynamicResource Muted}" StrokeThickness="1.4"/></Button>
+                    <Button x:Name="MaxBtn" Style="{StaticResource Chrome}" AutomationProperties.Name="Maximize"><Rectangle Width="10" Height="10" Stroke="{DynamicResource Muted}" StrokeThickness="1.3"/></Button>
+                    <Button x:Name="CloseBtn" Style="{StaticResource ChromeClose}" AutomationProperties.Name="Close"><Path Data="M0 0l10 10 M10 0L0 10" Stroke="{DynamicResource Muted}" StrokeThickness="1.4"/></Button>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <Separator Grid.Row="2"/>
+        <!-- ===== Body ===== -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="208"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
 
-        <Border Grid.Row="3" Background="#252526" CornerRadius="6" Padding="16">
+            <!-- Sidebar -->
+            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <Border DockPanel.Dock="Bottom" Padding="16,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{DynamicResource Green}"/>
+                                <TextBlock Margin="8,0,0,0" FontSize="11" Style="{StaticResource MutedText}" Text="{Binding ElevationText}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Margin="0,12,0,0">
+                        <RadioButton Style="{StaticResource Nav}" GroupName="nav" Command="{Binding Navigate}" CommandParameter="Connect" IsChecked="{Binding Page, Mode=OneWay, Converter={StaticResource EqBool}, ConverterParameter=Connect}">
+                            <StackPanel Orientation="Horizontal"><Path Style="{StaticResource Ico}" Data="{StaticResource IconConnect}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="{Binding L[nav.connect]}" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Nav}" GroupName="nav" Command="{Binding Navigate}" CommandParameter="Monitor" IsChecked="{Binding Page, Mode=OneWay, Converter={StaticResource EqBool}, ConverterParameter=Monitor}">
+                            <StackPanel Orientation="Horizontal"><Path Style="{StaticResource Ico}" Data="{StaticResource IconMonitor}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="{Binding L[nav.monitor]}" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Nav}" GroupName="nav" Command="{Binding Navigate}" CommandParameter="Activity" IsChecked="{Binding Page, Mode=OneWay, Converter={StaticResource EqBool}, ConverterParameter=Activity}">
+                            <StackPanel Orientation="Horizontal"><Path Style="{StaticResource Ico}" Data="{StaticResource IconActivity}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="{Binding L[nav.activity]}" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Nav}" GroupName="nav" Command="{Binding Navigate}" CommandParameter="History" IsChecked="{Binding Page, Mode=OneWay, Converter={StaticResource EqBool}, ConverterParameter=History}">
+                            <StackPanel Orientation="Horizontal"><Path Style="{StaticResource Ico}" Data="{StaticResource IconHistory}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="{Binding L[nav.history]}" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Nav}" GroupName="nav" Command="{Binding Navigate}" CommandParameter="Devices" IsChecked="{Binding Page, Mode=OneWay, Converter={StaticResource EqBool}, ConverterParameter=Devices}">
+                            <StackPanel Orientation="Horizontal"><Path Style="{StaticResource Ico}" Data="{StaticResource IconDevices}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="{Binding L[nav.devices]}" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Nav}" GroupName="nav" Command="{Binding Navigate}" CommandParameter="Diagnostics" IsChecked="{Binding Page, Mode=OneWay, Converter={StaticResource EqBool}, ConverterParameter=Diagnostics}">
+                            <StackPanel Orientation="Horizontal"><Path Style="{StaticResource Ico}" Data="{StaticResource IconDiag}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="{Binding L[nav.diagnostics]}" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Nav}" GroupName="nav" Command="{Binding Navigate}" CommandParameter="Settings" IsChecked="{Binding Page, Mode=OneWay, Converter={StaticResource EqBool}, ConverterParameter=Settings}">
+                            <StackPanel Orientation="Horizontal"><Path Style="{StaticResource Ico}" Data="{StaticResource IconSettings}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="{Binding L[nav.settings]}" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Nav}" GroupName="nav" Command="{Binding Navigate}" CommandParameter="Help" IsChecked="{Binding Page, Mode=OneWay, Converter={StaticResource EqBool}, ConverterParameter=Help}">
+                            <StackPanel Orientation="Horizontal"><Path Style="{StaticResource Ico}" Data="{StaticResource IconHelp}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/><TextBlock Text="{Binding L[nav.help]}" Margin="12,0,0,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></StackPanel>
+                        </RadioButton>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Pages -->
+            <Grid Grid.Column="1">
+
+                <!-- ============ CONNECT ============ -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=Connect}">
+                    <Grid Margin="24,20,24,20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/><ColumnDefinition Width="400"/></Grid.ColumnDefinitions>
+
+                        <!-- Left: configuration -->
+                        <StackPanel>
+                            <TextBlock Text="01" Style="{StaticResource SectionTitle}" Foreground="{DynamicResource Green}"/>
+                            <TextBlock Text="{Binding L[sec.method]}" Style="{StaticResource H1}" Margin="0,2,0,12"/>
+                            <ItemsControl ItemsSource="{Binding Methods}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource MethodCard}" Margin="0,0,10,10" Command="{Binding DataContext.SelectMethod, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" HorizontalContentAlignment="Stretch" AutomationProperties.Name="{Binding Title}">
+                                            <Grid>
+                                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                    <Border Width="34" Height="34" CornerRadius="9" Background="{DynamicResource Panel2}" BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                                                        <Path Style="{StaticResource Ico}" Data="{Binding IconKey, Converter={x:Static local:ResourceKeyConverter.Instance}}" Stroke="{DynamicResource Cyan}" Width="18" Height="18"/>
+                                                    </Border>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                    <Border Grid.Column="2" Visibility="{Binding Recommended, Converter={StaticResource BoolVis}}" CornerRadius="9" Background="{DynamicResource GreenGlow}" Padding="7,2" VerticalAlignment="Center">
+                                                        <TextBlock Text="RECOMMENDED" FontSize="8.5" FontWeight="Bold" Foreground="{DynamicResource Green}"/>
+                                                    </Border>
+                                                </Grid>
+                                                <TextBlock Grid.Row="1" Text="{Binding Description}" Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,10" LineHeight="16"/>
+                                                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                                    <Ellipse Width="7" Height="7" Fill="{Binding AvailState, Converter={StaticResource StateBrush}}" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Availability}" FontSize="11.5" Margin="7,0,0,0" Foreground="{Binding AvailState, Converter={StaticResource StateBrush}}"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="02" Style="{StaticResource SectionTitle}" Foreground="{DynamicResource Green}" Margin="0,14,0,0"/>
+                            <TextBlock Text="{Binding L[sec.prepare]}" Style="{StaticResource H1}" Margin="0,2,0,8"/>
+                            <Border Style="{StaticResource Card}"><ItemsControl ItemsSource="{Binding Checklist}" ItemTemplate="{StaticResource CheckRow}"/></Border>
+                        </StackPanel>
+
+                        <!-- Right: control + live traffic -->
+                        <StackPanel Grid.Column="2">
+                            <Border Style="{StaticResource Card}" Padding="16,12">
+                                <StackPanel>
+                                    <local:ConnectOrb Width="168" Height="168" State="{Binding Orb}" Command="{Binding ToggleConnect}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ButtonText}" HorizontalAlignment="Center" FontWeight="Bold" FontSize="13" Margin="0,6,0,0" Foreground="{Binding StatusBrush}"/>
+                                    <TextBlock Text="{Binding DetailText}" HorizontalAlignment="Center" Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" TextAlignment="Center" Margin="0,4,0,0" Visibility="{Binding DetailText, Converter={StaticResource HasText}}"/>
+                                    <Border Visibility="{Binding ShowAdminBanner, Converter={StaticResource BoolVis}}" Margin="0,12,0,0" Padding="10" CornerRadius="6" Background="#1AF5B84B" BorderBrush="{DynamicResource Amber}" BorderThickness="1">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding L[admin.needed]}" Foreground="{DynamicResource Amber}" TextWrapping="Wrap" FontSize="11.5"/>
+                                            <Button Content="{Binding L[admin.restart]}" Command="{Binding RestartAdmin}" Margin="0,8,0,0" HorizontalAlignment="Left" Padding="10,5"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Grid Margin="0,14,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                        <TextBlock Text="{Binding L[lbl.method]}" Style="{StaticResource Label}" Margin="0,3,16,3"/><TextBlock Grid.Column="1" Text="{Binding MethodText}" HorizontalAlignment="Right" FontSize="12.5" Margin="0,3"/>
+                                        <TextBlock Grid.Row="1" Text="{Binding L[lbl.device]}" Style="{StaticResource Label}" Margin="0,3,16,3"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DeviceText}" HorizontalAlignment="Right" FontSize="12.5" Margin="0,3" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Row="2" Text="{Binding L[lbl.duration]}" Style="{StaticResource Label}" Margin="0,3,16,3"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DurationText}" HorizontalAlignment="Right" FontSize="12.5" Style="{StaticResource Mono}" Margin="0,3"/>
+                                        <TextBlock Grid.Row="3" Text="{Binding L[lbl.vpn]}" Style="{StaticResource Label}" Margin="0,3,16,3"/><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding VpnText}" HorizontalAlignment="Right" FontSize="12.5" Margin="0,3"/>
+                                        <TextBlock Grid.Row="4" Text="{Binding L[lbl.internet]}" Style="{StaticResource Label}" Margin="0,3,16,3"/><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding NetText}" HorizontalAlignment="Right" FontSize="12.5" Margin="0,3"/>
+                                        <TextBlock Grid.Row="5" Text="{Binding L[lbl.iface]}" Style="{StaticResource Label}" Margin="0,3,16,3"/><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding IfaceText}" HorizontalAlignment="Right" FontSize="12.5" Margin="0,3"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+                                <StackPanel>
+                                    <Grid>
+                                        <TextBlock Text="{Binding L[traffic]}" Style="{StaticResource SectionTitle}"/>
+                                        <TextBlock Text="{Binding DataAlert}" Foreground="{DynamicResource Amber}" FontSize="11" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                        <HeaderedContentControl Style="{StaticResource Metric}" Header="↓ DOWNLOAD" Content="{Binding DownText}" FontSize="19" Foreground="{DynamicResource Green}"/>
+                                        <HeaderedContentControl Grid.Column="1" Style="{StaticResource Metric}" Header="↑ UPLOAD" Content="{Binding UpText}" FontSize="19" Foreground="{DynamicResource Cyan}"/>
+                                    </Grid>
+                                    <local:TrafficChart Down="{Binding DownHistory}" Up="{Binding UpHistory}" EmptyText="{Binding L[empty.traffic]}" Height="96" Margin="0,12,0,8" ShowAxis="False"/>
+                                    <UniformGrid Columns="3">
+                                        <HeaderedContentControl Style="{StaticResource Metric}" Header="DOWNLOADED" Content="{Binding TotDownText}" FontSize="12.5"/>
+                                        <HeaderedContentControl Style="{StaticResource Metric}" Header="UPLOADED" Content="{Binding TotUpText}" FontSize="12.5"/>
+                                        <HeaderedContentControl Style="{StaticResource Metric}" Header="TOTAL" Content="{Binding TotText}" FontSize="12.5"/>
+                                    </UniformGrid>
+                                    <UniformGrid Columns="3" Margin="0,10,0,0">
+                                        <HeaderedContentControl Style="{StaticResource Metric}" Header="LATENCY" Content="{Binding LatencyText}" FontSize="12.5"/>
+                                        <HeaderedContentControl Style="{StaticResource Metric}" Header="PROBE LOSS" Content="{Binding LossText}" FontSize="12.5"/>
+                                        <HeaderedContentControl Style="{StaticResource Metric}" Header="SIGNAL" Content="{Binding SignalText}" FontSize="12.5"/>
+                                    </UniformGrid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- ============ MONITOR ============ -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=Monitor}">
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="{Binding L[nav.monitor]}" Style="{StaticResource H1}"/>
+                        <TextBlock Text="Real interface counters, sampled once per second." Style="{StaticResource MutedText}" Margin="0,2,0,14"/>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Ellipse Width="9" Height="9" Fill="{DynamicResource Green}"/><TextBlock Text="Download" Margin="6,-2,18,0" Style="{StaticResource MutedText}" FontSize="12"/>
+                                    <Ellipse Width="9" Height="9" Fill="{DynamicResource Cyan}"/><TextBlock Text="Upload" Margin="6,-2,0,0" Style="{StaticResource MutedText}" FontSize="12"/>
+                                </StackPanel>
+                                <local:TrafficChart Down="{Binding DownHistory}" Up="{Binding UpHistory}" EmptyText="{Binding L[empty.traffic]}" Height="260"/>
+                                <TextBlock Text="Last 2 minutes" Style="{StaticResource Label}" HorizontalAlignment="Right" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <UniformGrid Columns="4" Margin="0,14,0,0">
+                            <Border Style="{StaticResource Card}" Margin="0,0,10,10"><HeaderedContentControl Style="{StaticResource Metric}" Header="DOWNLOAD NOW" Content="{Binding DownText}" FontSize="18" Foreground="{DynamicResource Green}"/></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,10,10"><HeaderedContentControl Style="{StaticResource Metric}" Header="UPLOAD NOW" Content="{Binding UpText}" FontSize="18" Foreground="{DynamicResource Cyan}"/></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,10,10"><HeaderedContentControl Style="{StaticResource Metric}" Header="SESSION DATA" Content="{Binding TotText}" FontSize="18"/></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,10"><HeaderedContentControl Style="{StaticResource Metric}" Header="UPTIME" Content="{Binding UptimeText}" FontSize="18"/></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,10,10"><HeaderedContentControl Style="{StaticResource Metric}" Header="LATENCY (phone path)" Content="{Binding LatencyText}" FontSize="18"/></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,10,10"><HeaderedContentControl Style="{StaticResource Metric}" Header="PROBE LOSS (last 20)" Content="{Binding LossText}" FontSize="18"/></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,10,10"><HeaderedContentControl Style="{StaticResource Metric}" Header="PHONE SIGNAL" Content="{Binding SignalText}" FontSize="15"/></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,10"><HeaderedContentControl Style="{StaticResource Metric}" Header="ACTIVE CONNECTIONS" Content="{Binding ConnsText}" FontSize="18"/></Border>
+                        </UniformGrid>
+                        <Border Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <HeaderedContentControl Style="{StaticResource Metric}" Header="INTERFACE" Content="{Binding IfaceText}" FontSize="13"/>
+                                <HeaderedContentControl Grid.Column="1" Style="{StaticResource Metric}" Header="METHOD" Content="{Binding MethodText}" FontSize="13"/>
+                                <HeaderedContentControl Grid.Column="2" Style="{StaticResource Metric}" Header="DEVICE" Content="{Binding DeviceText}" FontSize="13"/>
+                                <HeaderedContentControl Grid.Column="3" Style="{StaticResource Metric}" Header="TUNNEL" Content="{Binding VpnText}" FontSize="13"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ ACTIVITY ============ -->
+                <Grid Margin="24,20" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=Activity}">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,12">
+                        <StackPanel><TextBlock Text="{Binding L[nav.activity]}" Style="{StaticResource H1}"/><TextBlock Text="Everything CiciPDA does, with timestamps and severity. Secrets are never shown." Style="{StaticResource MutedText}" Margin="0,2,0,0"/></StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ComboBox ItemsSource="{Binding ActivityFilters}" SelectedItem="{Binding ActivityFilter}" Width="130" Margin="0,0,8,0" AutomationProperties.Name="Severity filter"/>
+                            <Button Content="{Binding L[act.clear]}" Command="{Binding ClearActivity}"/>
+                        </StackPanel>
+                    </Grid>
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                        <Grid>
+                            <ScrollViewer x:Name="ActivityScroll" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Events}" Margin="8">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="8,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="74"/><ColumnDefinition Width="86"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Time, StringFormat=HH:mm:ss}" Style="{StaticResource Mono}" Foreground="{DynamicResource Dim}" FontSize="12"/>
+                                                <Border Grid.Column="1" CornerRadius="9" Padding="8,1" HorizontalAlignment="Left" BorderThickness="1" BorderBrush="{Binding Severity, Converter={StaticResource SevBrush}}">
+                                                    <TextBlock Text="{Binding Severity}" FontSize="10" FontWeight="SemiBold" Foreground="{Binding Severity, Converter={StaticResource SevBrush}}"/>
+                                                </Border>
+                                                <TextBlock Grid.Column="2" Text="{Binding Source}" Style="{StaticResource MutedText}" FontSize="12" Margin="6,0,0,0"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5" IsHitTestVisible="False"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <TextBlock Text="{Binding L[empty.activity]}" Style="{StaticResource MutedText}" HorizontalAlignment="Center" VerticalAlignment="Center" x:Name="ActivityEmpty"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ============ HISTORY ============ -->
+                <Grid Margin="24,20" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=History}">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,12">
+                        <StackPanel><TextBlock Text="{Binding L[nav.history]}" Style="{StaticResource H1}"/><TextBlock Text="Saved locally in the data folder." Style="{StaticResource MutedText}" Margin="0,2,0,0"/></StackPanel>
+                        <Button Content="{Binding L[hist.clear]}" Command="{Binding ClearHistory}" Style="{StaticResource Danger}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                            <Grid Margin="20,12" >
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/><ColumnDefinition Width="90"/><ColumnDefinition Width="190"/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="STARTED" Style="{StaticResource Label}"/><TextBlock Grid.Column="1" Text="METHOD" Style="{StaticResource Label}"/><TextBlock Grid.Column="2" Text="DEVICE" Style="{StaticResource Label}"/>
+                                <TextBlock Grid.Column="3" Text="DURATION" Style="{StaticResource Label}"/><TextBlock Grid.Column="4" Text="DATA" Style="{StaticResource Label}"/><TextBlock Grid.Column="5" Text="RESULT" Style="{StaticResource Label}"/>
+                            </Grid>
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Sessions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Padding="20,10" ToolTip="{Binding Error}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/><ColumnDefinition Width="90"/><ColumnDefinition Width="190"/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Start}" FontSize="12.5"/><TextBlock Grid.Column="1" Text="{Binding Method}" FontSize="12.5"/><TextBlock Grid.Column="2" Text="{Binding Device}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding Duration}" Style="{StaticResource Mono}" FontSize="12.5"/><TextBlock Grid.Column="4" Text="{Binding Data}" Style="{StaticResource Mono}" FontSize="12"/>
+                                                    <TextBlock Grid.Column="5" Text="{Binding Result}" FontWeight="SemiBold" FontSize="12.5" Foreground="{Binding ResultState, Converter={StaticResource StateBrush}}"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <TextBlock Grid.Row="1" Text="{Binding L[empty.history]}" Style="{StaticResource MutedText}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding HasSessions, Converter={StaticResource InvBoolVis}}"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ============ DEVICES ============ -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=Devices}">
+                    <StackPanel Margin="24,20">
+                        <Grid Margin="0,0,0,12">
+                            <StackPanel><TextBlock Text="{Binding L[nav.devices]}" Style="{StaticResource H1}"/><TextBlock Text="Android devices are detected through ADB. Authorization happens on the phone." Style="{StaticResource MutedText}" Margin="0,2,0,0"/></StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Content="{Binding L[dev.refresh]}" Command="{Binding RefreshDevices}" Margin="0,0,8,0"/>
+                                <Button Content="{Binding L[dev.restart]}" Command="{Binding RestartAdb}"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="CONNECTED NOW" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource Card}" Visibility="{Binding HasDevices, Converter={StaticResource InvBoolVis}}"><TextBlock Text="{Binding L[empty.devices]}" Style="{StaticResource MutedText}"/></Border>
+                        <ItemsControl ItemsSource="{Binding DeviceRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/><ColumnDefinition Width="140"/><ColumnDefinition Width="140"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <Path Style="{StaticResource Ico}" Data="{StaticResource IconDevices}" Stroke="{DynamicResource Cyan}" Width="22" Height="22" HorizontalAlignment="Left"/>
+                                            <StackPanel Grid.Column="1"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/><TextBlock Text="{Binding Serial}" Style="{StaticResource Mono}" Foreground="{DynamicResource Dim}" FontSize="11" Margin="0,2,0,0"/></StackPanel>
+                                            <HeaderedContentControl Grid.Column="2" Style="{StaticResource Metric}" Header="CONNECTION" Content="{Binding Transport}" FontSize="13"/>
+                                            <HeaderedContentControl Grid.Column="3" Style="{StaticResource Metric}" Header="TRUST" Content="{Binding Trust}" FontSize="13"/>
+                                            <StackPanel Grid.Column="4" Orientation="Horizontal">
+                                                <TextBlock Text="Preferred" Foreground="{DynamicResource Green}" VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12" Visibility="{Binding Preferred, Converter={StaticResource BoolVis}}"/>
+                                                <Button Content="Set as preferred" Command="{Binding Prefer}" Visibility="{Binding Preferred, Converter={StaticResource InvBoolVis}}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="PREVIOUSLY PAIRED" Style="{StaticResource SectionTitle}" Margin="0,18,0,8"/>
+                        <Border Style="{StaticResource Card}" Visibility="{Binding HasKnown, Converter={StaticResource InvBoolVis}}"><TextBlock Text="No other devices have been seen." Style="{StaticResource MutedText}"/></Border>
+                        <ItemsControl ItemsSource="{Binding KnownRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8" Padding="16,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="120"/><ColumnDefinition Width="150"/><ColumnDefinition Width="130"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <StackPanel><TextBlock Text="{Binding Name}" FontSize="13.5"/><TextBlock Text="{Binding Serial}" Style="{StaticResource Mono}" Foreground="{DynamicResource Dim}" FontSize="11"/></StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding Transport}" Style="{StaticResource MutedText}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Trust}" Style="{StaticResource MutedText}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding LastSeen}" Style="{StaticResource MutedText}" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="4" Content="Forget" Command="{Binding Forget}" Style="{StaticResource Danger}"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ DIAGNOSTICS ============ -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=Diagnostics}">
+                    <StackPanel Margin="24,20">
+                        <Grid Margin="0,0,0,12">
+                            <StackPanel><TextBlock Text="{Binding L[diag.title]}" Style="{StaticResource H1}"/><TextBlock Text="Read-only tests. Each failure explains what to do next." Style="{StaticResource MutedText}" Margin="0,2,0,0"/></StackPanel>
+                            <Button Content="{Binding L[diag.runall]}" Command="{Binding RunAllDiag}" Style="{StaticResource Primary}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding DiagRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8" Padding="16,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <Border Width="22" Height="22" CornerRadius="11" BorderThickness="1.5" BorderBrush="{Binding State, Converter={StaticResource StateBrush}}" VerticalAlignment="Top">
+                                                <Path x:Name="ic" Style="{StaticResource Ico}" Width="11" Height="11" Data="M12 12h.01" Stroke="{Binding State, Converter={StaticResource StateBrush}}" StrokeThickness="2"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5"/><TextBlock Text="{Binding Ms}" Style="{StaticResource Mono}" Foreground="{DynamicResource Dim}" FontSize="11" Margin="10,2,0,0"/></StackPanel>
+                                                <TextBlock Text="{Binding Detail}" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                                <TextBlock Text="{Binding Fix, StringFormat='Suggested fix: {0}'}" Foreground="{DynamicResource Amber}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="{Binding Fix, Converter={StaticResource HasText}}"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="2" Content="Run" Command="{Binding Run}" IsEnabled="{Binding Running, Converter={x:Static local:InvertBool.Instance}}" VerticalAlignment="Top"/>
+                                        </Grid>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding State}" Value="Ok"><Setter TargetName="ic" Property="Data" Value="{StaticResource IconCheck}"/></DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Fail"><Setter TargetName="ic" Property="Data" Value="{StaticResource IconX}"/></DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ SETTINGS ============ -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=Settings}">
+                    <StackPanel Margin="24,20" MaxWidth="900" HorizontalAlignment="Left">
+                        <Grid Margin="0,0,0,14">
+                            <TextBlock Text="{Binding L[set.title]}" Style="{StaticResource H1}"/>
+                            <Button Content="{Binding L[set.save]}" Command="{Binding SaveSettings}" Style="{StaticResource Primary}" HorizontalAlignment="Right"/>
+                        </Grid>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="CONNECTION" Style="{StaticResource SectionTitle}"/>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Preferred transport" VerticalAlignment="Center"/><ComboBox Grid.Column="1" ItemsSource="{Binding Transports}" SelectedItem="{Binding Edit.Transport}" Width="180" HorizontalAlignment="Left"/></Grid>
+                                <CheckBox Content="Auto-connect when CiciPDA starts" IsChecked="{Binding Edit.AutoConnect}" Margin="0,7"/>
+                                <CheckBox Content="Reconnect automatically when the connection drops" IsChecked="{Binding Edit.AutoReconnect}" Margin="0,7"/>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="90"/><ColumnDefinition Width="150"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBlock Text="Reconnect attempts / delay (s)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.ReconnectAttempts}"/><TextBlock Grid.Column="2" Text="delay (seconds)" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="12,0,0,0"/><TextBox Grid.Column="3" Text="{Binding Edit.ReconnectDelaySec}"/></Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="TUNNEL, ADAPTER &amp; DNS  (changing these asks for confirmation)" Style="{StaticResource SectionTitle}"/>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="200"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="DNS servers (primary / secondary)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.DnsPrimary}"/><TextBox Grid.Column="2" Text="{Binding Edit.DnsSecondary}" Margin="8,0,0,0"/></Grid>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBlock Text="Adapter MTU (576–1500)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.Mtu}"/></Grid>
+                                <CheckBox Content="IPv6 leak protection (route IPv6 into the tunnel)" IsChecked="{Binding Edit.Ipv6LeakProtection}" Margin="0,7"/>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="adb.exe location (optional)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.AdbPath}"/></Grid>
+                                <TextBlock Text="Tunnel: AES-256-GCM over ADB loopback, Wintun adapter via tun2socks. Not WireGuard." Style="{StaticResource MutedText}" FontSize="11.5"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="WI-FI SHARING FROM THIS PC  (experimental, needs hardware validation)" Style="{StaticResource SectionTitle}"/>
+                                <CheckBox Content="Share the connection through Windows Mobile Hotspot after connecting" IsChecked="{Binding Edit.ShareWifi}" Margin="0,8"/>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="260"/></Grid.ColumnDefinitions><TextBlock Text="Network name (SSID)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.HotspotSsid}"/></Grid>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="260"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Passphrase (stored encrypted)" VerticalAlignment="Center"/><PasswordBox x:Name="HotspotPass" Grid.Column="1" Padding="8,6" Background="{DynamicResource Bg}" Foreground="{DynamicResource Text}" BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Green}"/><Button Grid.Column="2" Content="Generate" Command="{Binding GenPassword}" Margin="8,0,0,0"/></Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="DATA USAGE ALERTS (per session)" Style="{StaticResource SectionTitle}"/>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="110"/><ColumnDefinition Width="90"/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions><TextBlock Text="Warning at / critical at (MB)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.DataWarningMb}"/><TextBlock Grid.Column="2" Text="critical (MB)" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="12,0,0,0"/><TextBox Grid.Column="3" Text="{Binding Edit.DataCriticalMb}"/></Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="STARTUP, LOGGING &amp; APPEARANCE" Style="{StaticResource SectionTitle}"/>
+                                <CheckBox Content="Start minimized" IsChecked="{Binding Edit.StartMinimized}" Margin="0,8"/>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Logging level" VerticalAlignment="Center"/><ComboBox Grid.Column="1" ItemsSource="{Binding LogLevels}" SelectedItem="{Binding Edit.LogLevel}" Width="180" HorizontalAlignment="Left"/></Grid>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding L[theme]}" VerticalAlignment="Center"/><ComboBox Grid.Column="1" ItemsSource="{Binding Themes}" SelectedItem="{Binding Edit.Theme}" Width="180" HorizontalAlignment="Left"/></Grid>
+                                <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding L[lang]}" VerticalAlignment="Center"/><ComboBox Grid.Column="1" ItemsSource="{Binding Languages}" SelectedItem="{Binding Edit.Language}" Width="180" HorizontalAlignment="Left"/></Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ HELP ============ -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=Help}">
+                    <StackPanel Margin="24,20" MaxWidth="860" HorizontalAlignment="Left">
+                        <TextBlock Text="{Binding L[nav.help]}" Style="{StaticResource H1}" Margin="0,0,0,14"/>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="HOW IT WORKS" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" LineHeight="20" Style="{StaticResource MutedText}" Text="CiciPDA starts a small relay on your Android phone through ADB (no root). Windows traffic enters a virtual Wintun adapter, is handled by tun2socks, and travels through an AES-256-GCM protected channel to the relay, which opens the real connections on the phone — so your PC uses the phone's mobile data (or its VPN). CiciPDA only reports Connected after the route, DNS, HTTP and HTTPS checks pass."/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="IF SOMETHING GOES WRONG" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" LineHeight="20" Style="{StaticResource MutedText}" Text="• No device: use a data-capable cable, enable USB debugging, then press Refresh on Devices.&#10;• Unauthorized: unlock the phone and tap Allow on the debugging prompt.&#10;• Needs administrator: use Restart as administrator on the Connect page.&#10;• Connected but no pages load: run Network Diagnostics; the first failing test names the fix.&#10;• Network looks wrong after a crash: reopen CiciPDA — it removes leftover routes and adapters on start."/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="KNOWN LIMITATIONS" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" LineHeight="20" Style="{StaticResource MutedText}" Text="• The tunnel carries TCP and DNS. Other UDP (for example QUIC, voice calls) is not carried and is counted as dropped; browsers fall back to TCP.&#10;• ICMP ping to remote hosts does not traverse the tunnel.&#10;• iPhone and Android-hotspot modes verify and monitor the connection Windows already has; they create no tunnel.&#10;• This is not WireGuard. Wi-Fi sharing from the PC is experimental."/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="ABOUT" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock Margin="0,8,0,0" Text="{Binding Version, StringFormat='CiciPDA {0} — built on Wintun, tun2socks and Android Debug Bridge.'}" Style="{StaticResource MutedText}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button Content="GitHub" Command="{Binding OpenLink}" CommandParameter="https://github.com/RealMrNovember/CiciPDA" Margin="0,0,8,0"/>
+                                    <Button Content="Buy me a coffee" Command="{Binding OpenLink}" CommandParameter="https://buymeacoffee.com/MikeRoss" Margin="0,0,8,0"/>
+                                    <Button Content="Open data folder" Command="{Binding OpenData}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Toasts -->
+                <ItemsControl ItemsSource="{Binding Toasts}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,16" Width="360">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{DynamicResource Panel2}" BorderBrush="{Binding Severity, Converter={StaticResource SevBrush}}" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,6,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12.5"/>
+                                    <Button Grid.Column="1" Style="{StaticResource Chrome}" Width="24" Height="24" Margin="8,-4,-8,0" VerticalAlignment="Top" Command="{Binding DataContext.DismissToast, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" AutomationProperties.Name="Dismiss"><Path Data="M0 0l8 8 M8 0L0 8" Stroke="{DynamicResource Muted}" StrokeThickness="1.3"/></Button>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </Grid>
+
+        <!-- ===== Status bar ===== -->
+        <Border Grid.Row="2" Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Padding="16,0">
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <TextBlock Text="↓ Download" Style="{StaticResource Mono}" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="{Binding RxStr}" Style="{StaticResource Mono}" HorizontalAlignment="Right" FontSize="18" FontWeight="Bold"/>
-
-                <TextBlock Grid.Row="1" Text="↑ Upload" Style="{StaticResource Mono}" VerticalAlignment="Center" Margin="0,12,0,0"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TxStr}" Style="{StaticResource Mono}" HorizontalAlignment="Right" FontSize="18" FontWeight="Bold" Margin="0,12,0,0"/>
-
-                <ProgressBar Grid.Row="2" Grid.ColumnSpan="2" Height="4" Background="#3a3a3a" Foreground="#4ec9b0" 
-                             Value="{Binding Rx}" Maximum="1048576" IsIndeterminate="{Binding NotRunning}" Margin="0,16,0,0"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}"/><TextBlock Text="{Binding StatusText}" FontSize="11.5" Margin="7,0,18,0" Foreground="{Binding StatusBrush}"/>
+                    <TextBlock Text="{Binding GlobalType}" Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,0,18,0"/>
+                    <TextBlock Text="↓" Foreground="{DynamicResource Green}" FontSize="11.5"/><TextBlock Text="{Binding DownText}" Style="{StaticResource Mono}" FontSize="11" Margin="4,0,14,0"/>
+                    <TextBlock Text="↑" Foreground="{DynamicResource Cyan}" FontSize="11.5"/><TextBlock Text="{Binding UpText}" Style="{StaticResource Mono}" FontSize="11" Margin="4,0,18,0"/>
+                    <TextBlock Text="{Binding GlobalVpn}" Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,0,18,0"/>
+                    <TextBlock Text="{Binding GlobalNet}" Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,0,18,0"/>
+                    <TextBlock Text="{Binding GlobalUsage, StringFormat='Data: {0}'}" Style="{StaticResource MutedText}" FontSize="11.5"/>
+                </StackPanel>
+                <TextBlock Text="{Binding ClockText}" Style="{StaticResource Mono}" Foreground="{DynamicResource Muted}" FontSize="11.5" HorizontalAlignment="Right" VerticalAlignment="Center"/>
             </Grid>
         </Border>
-
-        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="Start" Command="{Binding StartCmd}" IsEnabled="{Binding NotRunning}" MinWidth="100" Margin="0,0,12,0"/>
-            <Button Content="Stop" Command="{Binding StopCmd}" IsEnabled="{Binding Running}" MinWidth="100" Background="#cc4444">
-                <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                        <Style.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#b03a3a"/></Trigger>
-                            <Trigger Property="IsPressed" Value="True"><Setter Property="Background" Value="#902e2e"/></Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-            </Button>
-        </StackPanel>
     </Grid>
 </Window>

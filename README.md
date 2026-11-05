@@ -32,10 +32,10 @@ The app never reports **Connected** unless the data path has actually passed its
 
 | Method | What it does | Status |
 | --- | --- | --- |
-| **Phone VPN** (recommended) | Wintun adapter on Windows → authenticated, encrypted channel over ADB → helper on the phone. Traffic follows the phone's connection, including any VPN running on the phone. | Being rebuilt |
-| **USB** | Same tunnel, restricted to a USB cable. Android devices are detected through ADB, including authorization state. | Being rebuilt |
-| **Android Wi-Fi hotspot** | Detects the Wi-Fi network you joined, verifies connectivity and monitors the interface. | Planned |
-| **iPhone Personal Hotspot** | Detects the hotspot or Apple USB Ethernet adapter, verifies and monitors. No tunnel is created. | Planned |
+| **Phone VPN** (recommended) | Wintun adapter on Windows → authenticated, encrypted channel over ADB → helper on the phone. Traffic follows the phone's connection, including any VPN running on the phone. | Implemented; awaiting on-device validation |
+| **USB** | Same tunnel, restricted to a USB cable. Android devices are detected through ADB, including authorization state. | Implemented; awaiting on-device validation |
+| **Android Wi-Fi hotspot** | Detects the Wi-Fi network you joined, verifies connectivity and monitors the interface. | Implemented (verify/monitor only); awaiting validation |
+| **iPhone Personal Hotspot** | Detects the hotspot or Apple USB Ethernet adapter, verifies and monitors. No tunnel is created. | Implemented (verify/monitor only); awaiting validation |
 
 Capabilities that are not implemented and verified are not presented as working in the interface.
 
@@ -95,7 +95,7 @@ Runtime tools that are not committed to the repository:
 - `wintun.dll` — from [wintun.net](https://www.wintun.net)
 - `tun2socks.exe` — from [xjasonlyu/tun2socks](https://github.com/xjasonlyu/tun2socks)
 
-`src/app/fetch-tools.ps1` downloads both. Review the script and the upstream releases before running it.
+`src/app/fetch-tools.ps1` downloads both into `src/app/tools` (and checks the `wintun.dll` hash). Review the script and the upstream releases before running it.
 
 The Android helper source is `src/agent/TunnelMain.java`; `src/agent/build.ps1` rebuilds `agent.dex` with the Android SDK build-tools.
 

@@ -5,26 +5,29 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>app.ico</ApplicationIcon>
-    <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
+    <AssemblyName>CiciPDA</AssemblyName>
+    <RootNamespace>CiciPDA.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>2.0.0</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ApplicationIcon Condition="Exists('app.ico')">app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <PublishTrimmed>false</PublishTrimmed>
+    <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
-    <NoWarn>$(NoWarn);NU1507</NoWarn>
-    <WindowsSdkPackageVersion>10.0.19041.38</WindowsSdkPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="bin\wintun.dll"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
-    <Content Include="bin\tun2socks.exe"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
-    <Content Include="agent.dex"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
-    <Content Include="app.ico"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <ProjectReference Include="..\core\CiciPDA.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <Content Include="tools\wintun.dll"><Link>tools\wintun.dll</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="tools\tun2socks.exe"><Link>tools\tun2socks.exe</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="agent.dex"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="..\..\data\adb\*"><Link>adb\%(Filename)%(Extension)</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
   </ItemGroup>
 </Project>

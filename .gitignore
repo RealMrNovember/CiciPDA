@@ -1,0 +1,7 @@
+bin/
+obj/
+*.user
+.vs/
+data/*.log
+src/app/tools/
+src/agent/out/
