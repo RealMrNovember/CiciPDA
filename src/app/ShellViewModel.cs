@@ -166,6 +166,20 @@ public sealed class ShellViewModel : Observable
         new IndicatorRow { Title = "Device connected" }, new IndicatorRow { Title = "Companion installed" }, new IndicatorRow { Title = "Companion running" },
         new IndicatorRow { Title = "Tunnel connected" }, new IndicatorRow { Title = "Windows network configured" }, new IndicatorRow { Title = "Internet verified" },
     };
+    // ---- Wi-Fi sharing card (Connect page) ----
+    public bool ShareEnabled => Settings.Current.ShareWifi;
+    public string ShareSsid => Settings.Current.HotspotSsid;
+    bool _showPass;
+    public bool ShowSharePassword { get => _showPass; set { if (Set(ref _showPass, value)) Raise(nameof(SharePasswordDisplay)); } }
+    public string SharePasswordDisplay { get { var p = Secret.Unprotect(Settings.Current.HotspotPasswordProtected); return p.Length == 0 ? "(not set)" : _showPass ? p : new string('\u2022', Math.Min(p.Length, 12)); } }
+    public string ShareStateText { get => _shState; private set => Set(ref _shState, value); }
+    string _shState = "";
+    public Brush ShareStateBrush { get => _shBrush; private set => Set(ref _shBrush, value); }
+    Brush _shBrush = Theme.Brush("Muted");
+    public string ShareClientsText { get => _shClients; private set => Set(ref _shClients, value); }
+    string _shClients = "";
+    public bool CanStartSharing => Orch.CanShareNow && !Orch.IsSharing && Settings.Current.ShareWifi;
+    public bool CanStopSharing => Orch.IsSharing;
     public string HotspotText { get => _hs; private set => Set(ref _hs, value); }
     string _hs = "";
     public string PhoneNetworkText { get => _pn; private set => Set(ref _pn, value); }
@@ -198,6 +212,11 @@ public sealed class ShellViewModel : Observable
     public ICommand OpenLink { get; }
     public ICommand GenPassword { get; }
     public ICommand DismissToast { get; }
+    public ICommand ToggleShare { get; }
+    public ICommand StartShare { get; }
+    public ICommand StopShare { get; }
+    public ICommand CopySharePassword { get; }
+    public ICommand ToggleSharePasswordVisible { get; }
     public ICommand CheckUpdates { get; }
     public ICommand InstallUpdate { get; }
 
@@ -232,6 +251,11 @@ public sealed class ShellViewModel : Observable
         OpenData = new RelayCommand(_ => Process.Start(new ProcessStartInfo("explorer.exe", AppPaths.DataDir) { UseShellExecute = true }));
         OpenLink = new RelayCommand(p => { if (p is string u && (u.StartsWith("https://") )) Process.Start(new ProcessStartInfo(u) { UseShellExecute = true }); });
         GenPassword = new RelayCommand(_ => HotspotPassword = Secret.GeneratePassphrase());
+        ToggleShare = new RelayCommand(OnToggleShare);
+        StartShare = new RelayCommand(async _ => { await Orch.StartSharingNowAsync(); RefreshAll(); });
+        StopShare = new RelayCommand(async _ => { await Orch.StopSharingNowAsync(); RefreshAll(); });
+        CopySharePassword = new RelayCommand(_ => { var p = Secret.Unprotect(Settings.Current.HotspotPasswordProtected); if (p.Length > 0) { Clipboard.SetText(p); Notifier.Show(Severity.Success, "Wi-Fi password copied to the clipboard."); } });
+        ToggleSharePasswordVisible = new RelayCommand(_ => ShowSharePassword = !ShowSharePassword);
         CheckUpdates = new RelayCommand(_ => CheckForUpdatesAsync(manual: true));
         InstallUpdate = new RelayCommand(OnInstallUpdate);
         DismissToast = new RelayCommand(p => { if (p is ToastRow t) Toasts.Remove(t); });
@@ -305,6 +329,22 @@ public sealed class ShellViewModel : Observable
             return;
         }
         await Orch.ConnectAsync(m);
+    }
+
+    /// <summary>Quick on/off switch for Wi-Fi sharing. Turning it on confirms first and makes sure a valid passphrase exists.</summary>
+    async Task OnToggleShare(object? arg)
+    {
+        var c = Settings.Current;
+        if (c.ShareWifi)
+        {
+            if (Orch.IsSharing) await Orch.StopSharingNowAsync();
+            c.ShareWifi = false; Settings.Save(); RefreshAll(); return;
+        }
+        if (!Dialogs.Confirm("Share this connection over Wi-Fi?",
+            $"CiciPDA will start the Windows Mobile Hotspot \"{c.HotspotSsid}\" and share ONLY the CiciPDA connection after it has been verified. Other devices can then join it. Your current hotspot settings are saved and restored afterwards.", "Turn on", true)) return;
+        if (Secret.Unprotect(c.HotspotPasswordProtected).Length < 8) c.HotspotPasswordProtected = Secret.Protect(Secret.GeneratePassphrase());
+        c.ShareWifi = true; Settings.Save(); RefreshAll();
+        if (Orch.CanShareNow) { await Orch.StartSharingNowAsync(); RefreshAll(); }
     }
 
     void OnRestartAdmin(object? arg)
@@ -581,6 +621,20 @@ public sealed class ShellViewModel : Observable
         Indicators[3].On = ind.TunnelConnected; Indicators[4].On = ind.NetworkConfigured; Indicators[5].On = ind.InternetVerified;
         PhoneNetworkText = string.IsNullOrEmpty(Orch.PhoneNetwork) ? "—" : Orch.PhoneNetwork;
         var hs = Orch.Hotspot;
+        Raise(nameof(ShareEnabled)); Raise(nameof(ShareSsid)); Raise(nameof(SharePasswordDisplay)); Raise(nameof(CanStartSharing)); Raise(nameof(CanStopSharing));
+        var h = Orch.Hotspot;
+        (ShareStateText, ShareStateBrush) = !Settings.Current.ShareWifi ? ("Off. Turn it on to let other devices use this connection through Wi-Fi.", Theme.Brush("Muted"))
+            : h.State switch
+            {
+                HotspotState.Active => ($"Active. Join \"{Settings.Current.HotspotSsid}\" from the other device. Waiting for a device...", Theme.Brush("Green")),
+                HotspotState.ClientConnected => ("A device is connected. Open the check page on it to confirm its internet.", Theme.Brush("Green")),
+                HotspotState.ClientInternetVerified => ("A connected device confirmed DNS and HTTPS. Sharing works.", Theme.Brush("Green")),
+                HotspotState.Starting => ("Starting the Windows hotspot...", Theme.Brush("Cyan")),
+                HotspotState.Failed => ("Could not start: " + h.Detail, Theme.Brush("Red")),
+                HotspotState.Unavailable when !string.IsNullOrEmpty(h.Detail) => ("Not available: " + h.Detail, Theme.Brush("Amber")),
+                _ => (Orch.CanShareNow ? "On. Press Start sharing, or reconnect." : "On. Sharing starts automatically after the connection is verified.", Theme.Brush("Amber")),
+            };
+        ShareClientsText = h.State is HotspotState.ClientConnected or HotspotState.ClientInternetVerified ? $"{h.ClientCount} device(s) connected" : (h.ProbeUrl != null ? "Check page for a connected device: " + h.ProbeUrl : "");
         HotspotText = !Settings.Current.ShareWifi && hs.State == HotspotState.Unavailable ? "" : hs.State switch
         {
             HotspotState.Unavailable => "Wi-Fi sharing: not available — " + hs.Detail, HotspotState.Available => "Wi-Fi sharing: available",

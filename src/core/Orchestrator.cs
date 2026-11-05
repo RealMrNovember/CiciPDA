@@ -519,6 +519,28 @@ public sealed class Orchestrator
     // ---------- Wi-Fi sharing ----------
     public HotspotService Hotspot { get; } = new();
 
+    /// <summary>True when the connection is up and is a tunnel method, i.e. when Windows can be asked to share the CiciPDA adapter.</summary>
+    public bool CanShareNow => IsActive && Method is ConnectionMethod.PhoneVpn or ConnectionMethod.Usb;
+    public bool IsSharing => Hotspot.State is HotspotState.Starting or HotspotState.Active or HotspotState.ClientConnected or HotspotState.ClientInternetVerified;
+
+    /// <summary>User pressed "Start sharing": same checks and safeguards as the automatic start.</summary>
+    public async Task StartSharingNowAsync()
+    {
+        if (!CanShareNow) throw new InvalidOperationException("Connect first: Wi-Fi sharing shares the verified CiciPDA connection.");
+        if (IsSharing) return;
+        await StartSharingAsync(CancellationToken.None);
+        Changed?.Invoke();
+    }
+
+    public async Task StopSharingNowAsync()
+    {
+        if (Hotspot.UpstreamGuid == null) return;
+        await Hotspot.StopAsync();
+        _journal.State.HotspotActive = false; _journal.State.HotspotAdapter = null; _journal.State.HotspotSsid = null; _journal.Save();
+        Log.Info("hotspot", "Wi-Fi sharing stopped by the user.");
+        Changed?.Invoke();
+    }
+
     /// <summary>Shares ONLY the CiciPDA adapter. If Windows cannot do that, say so; never fall back to another connection.</summary>
     async Task StartSharingAsync(CancellationToken ct)
     {

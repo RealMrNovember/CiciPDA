@@ -421,3 +421,38 @@ public class UpdateButtonStateTests
         foreach (var phase in new[] { "Downloading", "Verifying", "Installing" }) Assert.Contains(phase, body);
     }
 }
+
+
+public class WifiSharingCardTests
+{
+    static string Read(params string[] parts)
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(new[] { d.FullName }.Concat(parts).ToArray());
+            if (File.Exists(f)) return File.ReadAllText(f);
+        }
+        throw new FileNotFoundException(string.Join("/", parts));
+    }
+
+    [Fact]
+    public void ConnectPage_HasAWifiSharingCard_WithSwitchPasswordAndManualControls()
+    {
+        var xaml = Read("src", "app", "MainWindow.xaml");
+        foreach (var binding in new[] { "ToggleShare", "ShareStateText", "ShareSsid", "SharePasswordDisplay", "CopySharePassword", "ToggleSharePasswordVisible", "StartShare", "StopShare", "ShareClientsText" })
+            Assert.Contains("{Binding " + binding, xaml);
+    }
+
+    [Fact]
+    public void Sharing_NeverStartsWithoutAnActiveConnection_AndTurnOnAsksForConfirmation()
+    {
+        var core = Read("src", "core", "Orchestrator.cs");
+        Assert.Contains("Connect first: Wi-Fi sharing shares the verified CiciPDA connection.", core);
+        Assert.Contains("public bool CanShareNow => IsActive && Method is ConnectionMethod.PhoneVpn or ConnectionMethod.Usb;", core);
+        var vm = Read("src", "app", "ShellViewModel.cs");
+        int a = vm.IndexOf("async Task OnToggleShare");
+        var body = vm[a..(a + 1500)];
+        Assert.Contains("Dialogs.Confirm", body);                    // an outward-facing network change is confirmed
+        Assert.Contains("GeneratePassphrase", body);                  // a strong passphrase exists before the hotspot can start
+    }
+}

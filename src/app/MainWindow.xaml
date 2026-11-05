@@ -297,6 +297,37 @@
                             <Border Style="{StaticResource Card}" Margin="0,14,0,0">
                                 <StackPanel>
                                     <Grid>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Style="{StaticResource Ico}" Data="{StaticResource IconWifi}" Stroke="{DynamicResource Cyan}" Width="16" Height="16"/>
+                                            <TextBlock Text="WI-FI SHARING" Style="{StaticResource SectionTitle}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <CheckBox HorizontalAlignment="Right" Command="{Binding ToggleShare}" IsChecked="{Binding ShareEnabled, Mode=OneWay}" AutomationProperties.Name="Share this connection over Wi-Fi"/>
+                                    </Grid>
+                                    <TextBlock Text="{Binding ShareStateText}" Foreground="{Binding ShareStateBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0"/>
+                                    <Grid Margin="0,10,0,0" Visibility="{Binding ShareEnabled, Converter={StaticResource BoolVis}}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                        <TextBlock Text="Network" Style="{StaticResource Label}" Margin="0,3,16,3"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding ShareSsid}" HorizontalAlignment="Right" FontSize="12.5" FontWeight="SemiBold" Margin="0,3"/>
+                                        <TextBlock Grid.Row="1" Text="Password" Style="{StaticResource Label}" Margin="0,3,16,3" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <TextBlock Text="{Binding SharePasswordDisplay}" Style="{StaticResource Mono}" FontSize="12.5" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <Button Content="Show" Command="{Binding ToggleSharePasswordVisible}" Padding="8,2" FontSize="11" Margin="0,0,6,0"/>
+                                            <Button Content="Copy" Command="{Binding CopySharePassword}" Padding="8,2" FontSize="11"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock Text="{Binding ShareClientsText}" Style="{StaticResource MutedText}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="{Binding ShareClientsText, Converter={StaticResource HasText}}"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0" Visibility="{Binding ShareEnabled, Converter={StaticResource BoolVis}}">
+                                        <Button Content="Start sharing" Command="{Binding StartShare}" Style="{StaticResource Primary}" Padding="12,5" Margin="0,0,8,0" IsEnabled="{Binding CanStartSharing}"/>
+                                        <Button Content="Stop sharing" Command="{Binding StopShare}" Padding="12,5" IsEnabled="{Binding CanStopSharing}"/>
+                                        <Button Content="Settings" Command="{Binding Navigate}" CommandParameter="Settings" Padding="12,5" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+                                <StackPanel>
+                                    <Grid>
                                         <TextBlock Text="{Binding L[traffic]}" Style="{StaticResource SectionTitle}"/>
                                         <TextBlock Text="{Binding DataAlert}" Foreground="{DynamicResource Amber}" FontSize="11" HorizontalAlignment="Right"/>
                                     </Grid>
