@@ -66,6 +66,12 @@
                             <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontWeight="SemiBold" FontSize="12.5" Margin="8,0,0,0" AutomationProperties.LiveSetting="Polite"/>
                         </StackPanel>
                     </Border>
+                    <Border CornerRadius="12" Background="{DynamicResource GreenGlow}" BorderBrush="{DynamicResource Green}" BorderThickness="1" Padding="12,3" Margin="10,0,0,0" Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding UpdateBanner}" Foreground="{DynamicResource Green}" FontSize="12" VerticalAlignment="Center"/>
+                            <Button Content="Update" Command="{Binding InstallUpdate}" Style="{StaticResource Primary}" Padding="10,2" Margin="10,0,0,0" FontSize="11.5"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Style="{StaticResource Chrome}" Command="{Binding Navigate}" CommandParameter="Activity" ToolTip="Notifications" AutomationProperties.Name="Notifications" Width="40">
@@ -515,6 +521,7 @@
                             <StackPanel>
                                 <TextBlock Text="STARTUP, LOGGING &amp; APPEARANCE" Style="{StaticResource SectionTitle}"/>
                                 <CheckBox Content="Start minimized" IsChecked="{Binding Edit.StartMinimized}" Margin="0,8"/>
+                                <CheckBox Content="Check for CiciPDA updates automatically (installs only after you confirm)" IsChecked="{Binding Edit.AutoCheckUpdates}" Margin="0,7"/>
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Logging level" VerticalAlignment="Center"/><ComboBox Grid.Column="1" ItemsSource="{Binding LogLevels}" SelectedItem="{Binding Edit.LogLevel}" Width="180" HorizontalAlignment="Left"/></Grid>
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding L[theme]}" VerticalAlignment="Center"/><ComboBox Grid.Column="1" ItemsSource="{Binding Themes}" SelectedItem="{Binding Edit.Theme}" Width="180" HorizontalAlignment="Left"/></Grid>
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding L[lang]}" VerticalAlignment="Center"/><ComboBox Grid.Column="1" ItemsSource="{Binding Languages}" SelectedItem="{Binding Edit.Language}" Width="180" HorizontalAlignment="Left"/></Grid>
@@ -548,7 +555,12 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="ABOUT" Style="{StaticResource SectionTitle}"/>
-                                <TextBlock Margin="0,8,0,0" Text="{Binding Version, StringFormat='CiciPDA {0} — built on Wintun, tun2socks and Android Debug Bridge.'}" Style="{StaticResource MutedText}"/>
+                                <TextBlock Margin="0,8,0,0" Text="{Binding CurrentVersionText, StringFormat='CiciPDA {0} — built on Wintun, tun2socks and Android Debug Bridge.'}" Style="{StaticResource MutedText}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button Content="Check for updates" Command="{Binding CheckUpdates}" Margin="0,0,8,0"/>
+                                    <Button Content="Install update" Command="{Binding InstallUpdate}" Style="{StaticResource Primary}" Margin="0,0,8,0" Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVis}}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding UpdateStatus}" Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                     <Button Content="GitHub" Command="{Binding OpenLink}" CommandParameter="https://github.com/RealMrNovember/CiciPDA" Margin="0,0,8,0"/>
                                     <Button Content="Buy me a coffee" Command="{Binding OpenLink}" CommandParameter="https://buymeacoffee.com/MikeRoss" Margin="0,0,8,0"/>

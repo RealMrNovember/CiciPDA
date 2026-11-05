@@ -2,7 +2,7 @@
 namespace CiciPDA;
 static class Pins
 {
-    public const bool IsDevelopment = true;
-    public const string MetadataKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdgEYZrc2oUx/wXyadmnFCM6q6sEUCEMcfQ9RE7Iy0H/uyYENha/DljcN+Gu8dyQcZConrd9LvTyez5LbjFMIqQ==";
-    public static readonly string[] SignerCerts = { "b01294be4ecceafa36eb3c9afbb603a60fba480df6b2f0cff2f06446dcf1dade" };
+    public const bool IsDevelopment = false;
+    public const string MetadataKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEt66r0/WjCfYfB9YA5xaihBgSFyBolZ/JE/NUFB/ylZImqRfk0aaKIabaZODnQEA5J6GtVohKs7xzjykJg8Wgaw==";
+    public static readonly string[] SignerCerts = { "f0ac0c9b74d9c0661455421c8d6728ba91c7dfdeb52635511d9ab04293af4725" };
 }

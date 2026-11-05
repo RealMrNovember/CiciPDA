@@ -65,7 +65,7 @@ public sealed class AdbService
         cands.Add(Path.Combine(AppPaths.DataDir, "adb", "adb.exe"));
         // development layout: walk up looking for data\adb\adb.exe
         var d = new DirectoryInfo(AppPaths.BaseDir);
-        for (int i = 0; i < 8 && d != null; i++, d = d.Parent) cands.Add(Path.Combine(d.FullName, "data", "adb", "adb.exe"));
+        for (int i = 0; i < 8 && d != null; i++, d = d.Parent) cands.Add(Path.Combine(d.FullName, "third_party", "adb", "adb.exe"));
         foreach (var root in new[] { Environment.GetEnvironmentVariable("ANDROID_HOME"), Environment.GetEnvironmentVariable("ANDROID_SDK_ROOT"),
                      Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Android", "Sdk"),
                      Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Android", "Sdk") })

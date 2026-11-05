@@ -44,6 +44,9 @@ if ($LASTEXITCODE) { throw 'zipalign failed' }
 
 # 3) sign
 if ($env:CICI_KEYSTORE) { $ks = $env:CICI_KEYSTORE; $pass = $env:CICI_KS_PASS; $alias = $env:CICI_KS_ALIAS }
+elseif (Test-Path (Join-Path $rel 'prod.keystore')) {
+    $ks = Join-Path $rel 'prod.keystore'; $alias = 'cicipda-release'; $pass = (Get-Content (Join-Path $rel 'prod.pass') -Raw).Trim()
+}
 else {
     $ks = Join-Path $rel 'dev.keystore'; $alias = 'cicipda-dev'; $pass = 'cicipda-dev-only'
     if (-not (Test-Path $ks)) {

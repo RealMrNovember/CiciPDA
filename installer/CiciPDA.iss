@@ -1,7 +1,7 @@
 ; Inno Setup 6 script. Built by installer\build-installer.ps1 (needs ISCC.exe; NOT verified on this machine - Inno Setup is not installed).
 #define AppName "CiciPDA"
 #ifndef AppVersion
-  #define AppVersion "2.0.0"
+  #define AppVersion "2.1.0"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\artifacts\publish"
@@ -11,9 +11,11 @@
 AppId={{B5C0E9B4-6F8E-4C1B-9F55-3C1A7A3E6D21}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=Mike Ross
-DefaultDirName={autopf}\{#AppName}
-DefaultGroupName={#AppName}
+AppPublisherURL=https://github.com/RealMrNovember/CiciPDA
+VersionInfoVersion={#AppVersion}
+AppPublisher=CiciByte
+DefaultDirName={autopf}\CiciByte
+DefaultGroupName=CiciByte
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -31,6 +33,7 @@ CloseApplications=yes
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 Source: "..\THIRD_PARTY.md"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\CiciPDA.exe"

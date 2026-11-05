@@ -13,8 +13,8 @@ public static class AppPaths
             var env = Environment.GetEnvironmentVariable("CICIPDA_DATA");
             var candidates = new List<string>();
             if (!string.IsNullOrWhiteSpace(env)) candidates.Add(env);
-            candidates.Add(Path.Combine(BaseDir, "data"));
-            candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CiciPDA"));
+            // Installed under Program Files (read-only for users), so settings, logs and history live per user.
+            candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CiciByte", "CiciPDA"));
             foreach (var c in candidates)
             {
                 try

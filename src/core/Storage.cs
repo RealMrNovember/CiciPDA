@@ -32,6 +32,7 @@ public sealed class AppSettings
     public string HotspotPasswordProtected { get; set; } = "";   // DPAPI, never plain text
     public long DataWarningMb { get; set; } = 10240;
     public long DataCriticalMb { get; set; } = 20480;
+    public bool AutoCheckUpdates { get; set; } = true;       // check the signed release channel for a new CiciPDA
     public bool StartMinimized { get; set; }
     public string LogLevel { get; set; } = "Info";            // Debug | Info | Warning | Error
 }

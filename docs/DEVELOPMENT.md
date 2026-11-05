@@ -96,3 +96,19 @@ Development preview (renders a page to PNG; `--demo` fills **sample numbers for 
 * Elevated adapter/route/DNS/rollback, DNS failure handling, QUIC/UDP through a real phone, IPv6 behaviour, Windows NCSI reaching Internet, browser and background-service behaviour, Windows restart.
 * The Inno Setup installer (Inno Setup is not installed here), code signing, a fresh-Windows install, and the update download against a real GitHub release.
 * Production signing and metadata keys have not been created; the development keys are in use.
+
+---
+
+## Installer and auto-update (added 2026-11-06)
+
+* The portable build is gone: `PdaNetPortable.exe` and the old `data/` files were removed; bundled `adb` moved to `third_party/adb`. User data now lives in `%LocalAppData%\CiciByte\CiciPDA`.
+* `installer/CiciPDA.iss` installs to `C:\Program Files\CiciByte`, adds Start-menu/optional desktop shortcuts, flags `CiciPDA.exe` to run as administrator, and bundles the licence files. `installer/build-installer.ps1` builds it and writes the signed update manifest.
+* `AppUpdater` (core) + UI: automatic check 20 s after start and every 6 h (toggle in Settings), header *Update* button, Help page *Check for updates*. Trust: signed manifest, pinned GitHub HTTPS host, signed SHA-256, user confirmation, network teardown before the installer runs.
+* Production keys and pins created; `IsDevelopmentTrust` is false.
+
+### Tested
+* 41 tests pass, including updater manifest verification (wrong key, tampering, unsafe names, bad checksum, non-GitHub channel) and verification of the actually built release artifacts (`update.json`, installer SHA-256, companion metadata) against the compiled-in production pins.
+* `CiciPDA-Setup-2.1.0.exe` (47.7 MB) compiles with Inno Setup 6.7.3.
+
+### NOT tested
+* Running the installer (needs UAC elevation), install location, shortcuts, upgrade-over-existing, uninstall, and the silent update hand-off; the download path against a real GitHub release (none published yet).

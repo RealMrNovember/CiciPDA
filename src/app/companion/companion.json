@@ -5,6 +5,6 @@
     "protocol":  3,
     "minSdk":  24,
     "apk":  "cicipda-companion.apk",
-    "sha256":  "776846dd46fe0c362e048a48acfb6fd3fbacbb33917a630b5e3b5eda75e108eb",
-    "signerCertSha256":  "b01294be4ecceafa36eb3c9afbb603a60fba480df6b2f0cff2f06446dcf1dade"
+    "sha256":  "e463598726e7b4ff7cfc4ecd52c215504bed1d2c7c0c5efb5d21c76234f1a9f5",
+    "signerCertSha256":  "f0ac0c9b74d9c0661455421c8d6728ba91c7dfdeb52635511d9ab04293af4725"
 }

@@ -83,7 +83,21 @@ Visual direction: a dark, near-black interface with restrained green/cyan accent
 - Administrator rights for the connection step (virtual adapter, routes and DNS)
 - [.NET 9 SDK](https://dotnet.microsoft.com/download) to build from source
 
-## Build
+## Installation
+
+Download **`CiciPDA-Setup-<version>.exe`** from the [Releases](https://github.com/RealMrNovember/CiciPDA/releases) page and run it. It installs CiciPDA to `C:\Program Files\CiciByte`, together with everything it needs (ADB, the Wintun adapter driver library, the packet engine and the signed Android companion). There is no portable build.
+
+1. Start CiciPDA (it asks for administrator rights, which the virtual adapter needs).
+2. Connect your Android phone with a data cable and approve **Allow USB debugging** on the phone.
+3. Press **Connect**. CiciPDA installs or updates the companion app on the phone, starts it, builds the encrypted tunnel, configures Windows networking and verifies real internet access.
+
+**Updates:** CiciPDA checks the signed release channel on GitHub (disable under Settings) and shows an *Update* button when a new version exists. The installer is verified against a signed checksum and only runs after you confirm. The Android companion updates the same way, with its signer certificate pinned.
+
+Settings, history and logs are stored per user in `%LocalAppData%\CiciByte\CiciPDA`. Uninstall through *Apps & features*.
+
+> Releases are not yet Authenticode-signed, so Windows SmartScreen may show a warning on first run.
+
+## Build (developers)
 
 ```powershell
 cd src\app
@@ -112,7 +126,7 @@ The Android helper source is `src/agent/TunnelMain.java`; `src/agent/build.ps1` 
 
 ## Project status
 
-The application is under active development. Features that need a physical phone, a USB cable, a Wi-Fi adapter or administrator privileges are validated on real hardware and documented as such before being marked complete.
+The application is under active development. Hardware validation with real phones is still in progress (see docs/DEVELOPMENT.md). Features that need a physical phone, a USB cable, a Wi-Fi adapter or administrator privileges are validated on real hardware and documented as such before being marked complete.
 
 ## Support the project
 

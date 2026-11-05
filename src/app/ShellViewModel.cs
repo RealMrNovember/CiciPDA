@@ -195,6 +195,8 @@ public sealed class ShellViewModel : Observable
     public ICommand OpenLink { get; }
     public ICommand GenPassword { get; }
     public ICommand DismissToast { get; }
+    public ICommand CheckUpdates { get; }
+    public ICommand InstallUpdate { get; }
 
     // ---- settings editing ----
     public AppSettings Edit { get; private set; } = new();
@@ -227,6 +229,8 @@ public sealed class ShellViewModel : Observable
         OpenData = new RelayCommand(_ => Process.Start(new ProcessStartInfo("explorer.exe", AppPaths.DataDir) { UseShellExecute = true }));
         OpenLink = new RelayCommand(p => { if (p is string u && (u.StartsWith("https://") )) Process.Start(new ProcessStartInfo(u) { UseShellExecute = true }); });
         GenPassword = new RelayCommand(_ => HotspotPassword = Secret.GeneratePassphrase());
+        CheckUpdates = new RelayCommand(_ => CheckForUpdatesAsync(manual: true));
+        InstallUpdate = new RelayCommand(OnInstallUpdate);
         DismissToast = new RelayCommand(p => { if (p is ToastRow t) Toasts.Remove(t); });
 
         foreach (var (id, title) in DiagnosticsService.Tests)
@@ -250,6 +254,12 @@ public sealed class ShellViewModel : Observable
         Devices.Changed += () => _ui.BeginInvoke(RebuildDevices);
         Settings.Changed += () => _ui.BeginInvoke(() => { L.Language = Settings.Current.Language; Theme.Apply(Settings.Current.Theme); BuildMethods(); RefreshAll(); });
 
+        var upd = new DispatcherTimer { Interval = TimeSpan.FromHours(6) };
+        upd.Tick += (_, _) => _ = CheckForUpdatesAsync(manual: false);
+        upd.Start();
+        var first = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+        first.Tick += (_, _) => { first.Stop(); _ = CheckForUpdatesAsync(manual: false); };
+        first.Start();
         _tick.Tick += (_, _) => OnTick();
         _tick.Start();
         RefreshAll(); RebuildHistory(); RebuildDevices();
@@ -440,6 +450,47 @@ public sealed class ShellViewModel : Observable
         SyncStages();
         UpdateAvailability();
         Raise(nameof(GlobalNet)); Raise(nameof(GlobalVpn)); Raise(nameof(GlobalType)); Raise(nameof(GlobalUsage));
+    }
+
+    // ---- application updates ----
+    readonly AppUpdater _updater = new();
+    UpdateInfo? _update;
+    string _updateStatus = "";
+    public string UpdateStatus { get => _updateStatus; private set => Set(ref _updateStatus, value); }
+    public bool UpdateAvailable { get => _updateAvail; private set => Set(ref _updateAvail, value); }
+    bool _updateAvail;
+    public string UpdateBanner => _update == null ? "" : $"CiciPDA {_update.Manifest.Version} is available";
+    public string CurrentVersionText => AppUpdater.CurrentVersion.ToString();
+
+    async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (!manual && !Settings.Current.AutoCheckUpdates) return;
+        try
+        {
+            UpdateStatus = "Checking for updates...";
+            _update = await _updater.CheckAsync(CancellationToken.None);
+            UpdateAvailable = _update != null; Raise(nameof(UpdateBanner));
+            UpdateStatus = _update == null ? "You have the latest version." : $"Version {_update.Manifest.Version} is available. {_update.Manifest.Notes}";
+            if (_update != null) Log.Info("update", "Update available: " + _update.Manifest.Version);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            UpdateStatus = manual ? "Could not check for updates: " + (ex is HttpRequestException ? "no connection to the release server (or no release published yet)." : ex.Message) : "";
+            Log.Info("update", "Update check failed: " + ex.Message);
+        }
+    }
+
+    async Task OnInstallUpdate(object? arg)
+    {
+        if (_update == null) return;
+        string warn = Orch.IsActive || Orch.IsBusy ? " Your connection will be closed first and your network settings restored." : "";
+        if (!Dialogs.Confirm("Install update", $"Download and install CiciPDA {_update.Manifest.Version}? The signed installer is verified before it runs.{warn}", "Install", false)) return;
+        UpdateStatus = "Downloading...";
+        var path = await _updater.DownloadAsync(_update, new Progress<double>(p => UpdateStatus = $"Downloading... {p:P0}"), CancellationToken.None);
+        UpdateStatus = "Verified. Closing CiciPDA and starting the installer...";
+        await Orch.ShutdownAsync();
+        AppUpdater.LaunchInstaller(path);
+        Application.Current.Shutdown();
     }
 
     bool _demo;
