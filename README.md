@@ -87,8 +87,12 @@ Visual direction: a dark, near-black interface with restrained green/cyan accent
 
 ```powershell
 cd src\app
+.\fetch-tools.ps1      # downloads wintun.dll and tun2socks.exe into tools\
 dotnet build -c Release
+dotnet test ..\..\tests\CiciPDA.Tests
 ```
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for architecture, audit findings, test results and what still needs hardware validation.
 
 Runtime tools that are not committed to the repository:
 
