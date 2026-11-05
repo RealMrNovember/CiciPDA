@@ -96,9 +96,11 @@ public sealed class TunnelNetwork : IDisposable
     /// <summary>
     /// tun2socks (cobra/pflag) takes GNU-style options: long names need TWO dashes. A single dash makes pflag read "-loglevel" as the
     /// cluster of short flags -l -o -g ... and abort ("unknown shorthand flag"), which is what broke the first real-device run.
+    /// The device scheme is <c>tun://</c>: tun2socks v2 uses Wintun automatically on Windows and has no <c>wintun://</c> driver
+    /// ("unsupported driver: wintun" on the second real-device run).
     /// </summary>
     public static string[] BuildTun2SocksArgs(int socksPort) =>
-        new[] { "--device", $"wintun://{AdapterName}", "--proxy", $"socks5://127.0.0.1:{socksPort}", "--loglevel", "info" };
+        new[] { "--device", $"tun://{AdapterName}", "--proxy", $"socks5://127.0.0.1:{socksPort}", "--loglevel", "info" };
 
     public TunnelNetwork(RecoveryJournal journal) { _journal = journal; }
 
@@ -125,7 +127,7 @@ public sealed class TunnelNetwork : IDisposable
         for (int i = 0; i < 60 && ni == null; i++)
         {
             ct.ThrowIfCancellationRequested();
-            if (_t2s.HasExited) { string e; lock (errs) e = string.Join(" | ", errs.TakeLast(3)); throw new InvalidOperationException("tun2socks exited immediately: " + e); }
+            if (_t2s.HasExited) { string e; lock (errs) e = string.Join(" | ", errs.TakeLast(3)); throw new InvalidOperationException("The packet engine (tun2socks) could not start: " + Tun2SocksLog.Summarize(e)); }
             ni = WinNet.FindByName(AdapterName);
             if (ni == null) await Task.Delay(250, ct);
         }
@@ -355,5 +357,27 @@ public static class RollbackCheck
         var ni = WinNet.FindByIndex(best);
         if (ni?.Name == TunnelNetwork.AdapterName) problems.Add("internet traffic would still be routed into the CiciPDA adapter");
         return problems.Count == 0 ? (true, "Rollback verified: adapter, DNS and routes are gone; traffic uses " + (ni?.Name ?? "the normal interface") + ".") : (false, "Rollback incomplete: " + string.Join("; ", problems) + ".");
+    }
+}
+
+
+/// <summary>Turns tun2socks' JSON log lines into one readable sentence for the UI.</summary>
+public static class Tun2SocksLog
+{
+    public static string Summarize(string joinedLines)
+    {
+        foreach (var raw in joinedLines.Split(" | ", StringSplitOptions.RemoveEmptyEntries).Reverse())
+        {
+            var line = raw.Trim();
+            string msg = line;
+            if (line.StartsWith("{"))
+                try { using var d = System.Text.Json.JsonDocument.Parse(line); if (d.RootElement.TryGetProperty("msg", out var m)) msg = m.GetString() ?? line; }
+                catch (System.Text.Json.JsonException) { }
+            msg = msg.Replace("[ENGINE] ", "");
+            if (msg.Contains("Access is denied", StringComparison.OrdinalIgnoreCase)) return "Windows denied access to the network driver. Run CiciPDA as administrator. (" + msg + ")";
+            if (msg.Contains("unsupported driver", StringComparison.OrdinalIgnoreCase)) return "internal driver setting is wrong (" + msg + "). Please update CiciPDA.";
+            if (msg.Length > 0) return msg.Length > 240 ? msg[..240] : msg;
+        }
+        return "no details were reported.";
     }
 }

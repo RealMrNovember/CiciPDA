@@ -1,7 +1,7 @@
 ; Inno Setup 6 script. Built by installer\build-installer.ps1 (needs ISCC.exe; NOT verified on this machine - Inno Setup is not installed).
 #define AppName "CiciPDA"
 #ifndef AppVersion
-  #define AppVersion "2.1.3"
+  #define AppVersion "2.1.4"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\artifacts\publish"

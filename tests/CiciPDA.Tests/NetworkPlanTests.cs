@@ -249,7 +249,7 @@ public class Tun2SocksArgsTests
     public void Arguments_UseDoubleDashLongOptions()
     {
         var a = TunnelNetwork.BuildTun2SocksArgs(1080);
-        Assert.Equal(new[] { "--device", "wintun://CiciPDA", "--proxy", "socks5://127.0.0.1:1080", "--loglevel", "info" }, a);
+        Assert.Equal(new[] { "--device", "tun://CiciPDA", "--proxy", "socks5://127.0.0.1:1080", "--loglevel", "info" }, a);
         Assert.DoesNotContain(a, x => x.StartsWith("-") && !x.StartsWith("--"));
     }
 
@@ -290,5 +290,41 @@ public class NetshSyntaxTests
     {
         var r = await ProcessRunner.RunAsync("netsh.exe", new[] { "interface", "ipv4" }.Concat(verb.Split(' ')).Concat(new[] { "?" }), TimeSpan.FromSeconds(15));
         Assert.Contains(expectedParam, r.Combined);
+    }
+}
+
+
+public class Tun2SocksDriverTests
+{
+    static string? Exe()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var c = Path.Combine(d.FullName, "src", "app", "tools", "tun2socks.exe");
+            if (File.Exists(c)) return c;
+        }
+        return null;
+    }
+
+    [Fact]
+    public async Task DeviceScheme_WeUse_IsASupportedDriver_AndWintunScheme_IsNot()
+    {
+        var exe = Exe();
+        if (exe == null || WinNet.IsElevated()) return;           // never create a real adapter from a test; non-admin runs stop at "access denied"
+        var scheme = TunnelNetwork.BuildTun2SocksArgs(1)[1];
+        Assert.StartsWith("tun://", scheme);
+        var ours = await ProcessRunner.RunAsync(exe, new[] { "--device", scheme, "--proxy", "socks5://127.0.0.1:1", "--loglevel", "info" }, TimeSpan.FromSeconds(6));
+        Assert.DoesNotContain("unsupported driver", ours.Combined);
+        var old = await ProcessRunner.RunAsync(exe, new[] { "--device", "wintun://CiciTest", "--proxy", "socks5://127.0.0.1:1", "--loglevel", "info" }, TimeSpan.FromSeconds(6));
+        Assert.Contains("unsupported driver", old.Combined);      // proves the check is meaningful
+    }
+
+    [Fact]
+    public void Summarize_ProducesReadableSentences()
+    {
+        const string fatal = "{\"level\":\"fatal\",\"msg\":\"[ENGINE] failed to start: unsupported driver: wintun\",\"stacktrace\":\"x\"}";
+        Assert.Contains("update CiciPDA", Tun2SocksLog.Summarize(fatal));
+        Assert.Contains("administrator", Tun2SocksLog.Summarize("2026/11/06 Failed to take device installation mutex: Access is denied. (Code 0x00000005)"));
+        Assert.Equal("no details were reported.", Tun2SocksLog.Summarize(""));
     }
 }
