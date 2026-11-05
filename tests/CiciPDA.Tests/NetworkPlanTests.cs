@@ -328,3 +328,58 @@ public class Tun2SocksDriverTests
         Assert.Equal("no details were reported.", Tun2SocksLog.Summarize(""));
     }
 }
+
+
+public class HeaderClickabilityTests
+{
+    [Fact]
+    public void EveryHeaderButton_IsHitTestVisibleInChrome()
+    {
+        // The header is the window's drag area (WindowChrome caption). A control there receives mouse clicks ONLY if
+        // WindowChrome.IsHitTestVisibleInChrome is true (directly or via the Chrome button styles); otherwise it looks fine but cannot be clicked.
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(d.FullName, "src", "app", "MainWindow.xaml");
+            if (!File.Exists(f)) continue;
+            var xaml = File.ReadAllText(f);
+            int a = xaml.IndexOf("<!-- ===== Header ===== -->"), b = xaml.IndexOf("<!-- ===== Body ===== -->");
+            Assert.True(a > 0 && b > a, "header markers not found");
+            var header = xaml[a..b];
+            var buttons = System.Text.RegularExpressions.Regex.Matches(header, "<Button\\s[^>]*>");
+            Assert.True(buttons.Count >= 5, "expected update, check-updates, notifications, min/max/close buttons");
+            foreach (System.Text.RegularExpressions.Match m in buttons)
+                Assert.True(m.Value.Contains("IsHitTestVisibleInChrome=\"True\"") || m.Value.Contains("StaticResource Chrome}") || m.Value.Contains("StaticResource ChromeClose}"), "not clickable in the caption area: " + m.Value[..Math.Min(90, m.Value.Length)]);
+            Assert.Contains("Command=\"{Binding InstallUpdate}\"", header);
+            Assert.Contains("Command=\"{Binding CheckUpdates}\"", header);
+            return;
+        }
+        Assert.Fail("MainWindow.xaml not found");
+    }
+}
+
+
+public class StaleAdapterTests
+{
+    [Fact]
+    public async Task RemoveAdapter_ForNameThatDoesNotExist_ReturnsTrueImmediately()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Assert.True(await WinNet.RemoveAdapterAsync("definitely-not-an-adapter-" + Guid.NewGuid().ToString("N")[..6]));
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
+    public void Start_NoLongerFailsFastOnAStaleAdapter()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(d.FullName, "src", "core", "WinNet.cs");
+            if (!File.Exists(f)) continue;
+            var s = File.ReadAllText(f);
+            Assert.Contains("RemoveAdapterAsync(AdapterName)", s);
+            Assert.DoesNotContain("Close it and retry.", s);
+            return;
+        }
+        Assert.Fail("WinNet.cs not found");
+    }
+}

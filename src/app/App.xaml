@@ -29,6 +29,7 @@
         <Geometry x:Key="IconCheck">M5 12.5l4.5 4.5L19 7.5</Geometry>
         <Geometry x:Key="IconX">M6 6l12 12 M18 6L6 18</Geometry>
         <Geometry x:Key="IconAlert">M12 8v5 M12 16.5h.01 M10.3 4.2L2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z</Geometry>
+        <Geometry x:Key="IconRefresh">M20 11a8 8 0 1 0-2.3 6 M20 4v7h-7</Geometry>
         <Geometry x:Key="IconDown">M12 4v14 M6 13l6 6 6-6</Geometry>
         <Geometry x:Key="IconUp">M12 20V6 M6 11l6-6 6 6</Geometry>
 

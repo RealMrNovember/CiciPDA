@@ -34,6 +34,21 @@ public static class WinNet
 
     public static int IndexOf(NetworkInterface n) { try { return n.GetIPProperties().GetIPv4Properties().Index; } catch { return -1; } }
 
+    /// <summary>
+    /// Removes a (stale) network adapter by name. A Wintun adapter is normally deleted by the process that created it, but when that process
+    /// is killed or still shutting down the adapter can linger and block the next connection ("already exists"). Uses pnputil, which ships with Windows.
+    /// Returns true when no adapter with that name remains.
+    /// </summary>
+    public static async Task<bool> RemoveAdapterAsync(string name, int waitSeconds = 6)
+    {
+        if (FindByName(name) == null) return true;
+        var script = "$a=Get-NetAdapter -IncludeHidden -Name $env:CICI_NAME -ErrorAction SilentlyContinue; if($a){ pnputil.exe /remove-device $a.PnPDeviceID | Out-Null }";
+        await ProcessRunner.RunAsync("powershell.exe", new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script }, TimeSpan.FromSeconds(30),
+            env: new Dictionary<string, string> { ["CICI_NAME"] = name });
+        for (int i = 0; i < waitSeconds * 4 && FindByName(name) != null; i++) await Task.Delay(250);
+        return FindByName(name) == null;
+    }
+
     public static Task<ProcResult> Netsh(params string[] args) => ProcessRunner.RunAsync("netsh.exe", args, TimeSpan.FromSeconds(20));
 }
 
@@ -110,7 +125,14 @@ public sealed class TunnelNetwork : IDisposable
         if (!File.Exists(AppPaths.Tun2Socks)) throw new FileNotFoundException("tun2socks.exe is missing from the tools folder. Run fetch-tools.ps1.");
         if (!File.Exists(AppPaths.WintunDll)) throw new FileNotFoundException("wintun.dll is missing from the tools folder. Run fetch-tools.ps1.");
         if (WinNet.FindByName(AdapterName) != null)
-            throw new InvalidOperationException($"A network adapter named {AdapterName} already exists (another instance or a stale adapter). Close it and retry.");
+        {
+            // Left over from a previous attempt (a killed tun2socks does not always remove its Wintun adapter, or removal is still in progress).
+            Log.Warn("adapter", $"A stale adapter named {AdapterName} exists; waiting for it to disappear, then removing it.");
+            for (int i = 0; i < 20 && WinNet.FindByName(AdapterName) != null; i++) await Task.Delay(250, ct);
+            if (!await WinNet.RemoveAdapterAsync(AdapterName))
+                throw new InvalidOperationException($"A stale network adapter named {AdapterName} could not be removed. Disable or uninstall it in Device Manager (Network adapters), then try again.");
+            Log.Ok("adapter", "Stale adapter removed.");
+        }
 
         // Where would traffic to the phone go today? Capture before we change routes so the transport never loops through the tunnel.
         int origIf = bypassHost != null ? WinNet.BestInterfaceFor(bypassHost) : -1;
@@ -186,6 +208,7 @@ public sealed class TunnelNetwork : IDisposable
             _t2s.Kill();   // removes the Wintun adapter, which removes its addresses, DNS and routes with it
             for (int i = 0; i < 20 && WinNet.FindByName(AdapterName) != null; i++) await Task.Delay(250);
             _t2s.Dispose(); _t2s = null;
+            if (WinNet.FindByName(AdapterName) != null) { Log.Warn("adapter", "The adapter outlived tun2socks; removing it explicitly."); await WinNet.RemoveAdapterAsync(AdapterName); }
             if (WinNet.FindByName(AdapterName) != null) Log.Warn("adapter", "Adapter is still present after stopping tun2socks.");
             else Log.Info("adapter", "Virtual adapter removed.");
         }

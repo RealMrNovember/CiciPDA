@@ -460,14 +460,18 @@ public sealed class ShellViewModel : Observable
     UpdateInfo? _update;
     string _updateStatus = "";
     public string UpdateStatus { get => _updateStatus; private set => Set(ref _updateStatus, value); }
+    public bool IsCheckingUpdates { get => _checking; private set => Set(ref _checking, value); }
+    bool _checking;
     public bool UpdateAvailable { get => _updateAvail; private set => Set(ref _updateAvail, value); }
     bool _updateAvail;
-    public string UpdateBanner => _update == null ? "" : $"CiciPDA {_update.Manifest.Version} is available";
+    public string UpdateBanner => _demo ? "CiciPDA 2.2.0 is available" : _update == null ? "" : $"CiciPDA {_update.Manifest.Version} is available";
     public string CurrentVersionText => AppUpdater.CurrentVersion.ToString();
 
     async Task CheckForUpdatesAsync(bool manual)
     {
         if (!manual && !Settings.Current.AutoCheckUpdates) return;
+        if (IsCheckingUpdates) return;
+        IsCheckingUpdates = true;
         try
         {
             UpdateStatus = "Checking for updates...";
@@ -475,12 +479,15 @@ public sealed class ShellViewModel : Observable
             UpdateAvailable = _update != null; Raise(nameof(UpdateBanner));
             UpdateStatus = _update == null ? "You have the latest version." : $"Version {_update.Manifest.Version} is available. {_update.Manifest.Notes}";
             if (_update != null) Log.Info("update", "Update available: " + _update.Manifest.Version);
+            if (manual) Notifier.Show(_update == null ? Severity.Success : Severity.Info, _update == null ? $"CiciPDA is up to date ({CurrentVersionText})." : $"CiciPDA {_update.Manifest.Version} is available. Click Update in the header to install it.");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             UpdateStatus = manual ? "Could not check for updates: " + (ex is HttpRequestException ? "no connection to the release server (or no release published yet)." : ex.Message) : "";
             Log.Info("update", "Update check failed: " + ex.Message);
+            if (manual) Notifier.Show(Severity.Warning, UpdateStatus);
         }
+        finally { IsCheckingUpdates = false; }
     }
 
     async Task OnInstallUpdate(object? arg)
@@ -513,6 +520,7 @@ public sealed class ShellViewModel : Observable
         Stages.Clear();
         var titles = new[] { "Detect phone", "Check USB debugging authorization", "Check Android companion", "Install / update companion", "Start companion service", "Establish secure tunnel", "Create virtual adapter", "Configure routes and DNS", "Verify internet access" };
         for (int i = 0; i < titles.Length; i++) Stages.Add(new StageRow { Title = titles[i], Detail = det[i], State = ItemState.Ok, Skipped = i == 3 });
+        UpdateAvailable = true; Raise(nameof(UpdateBanner));
         ShowStages = true; ShowAdminBanner = false;
         Checklist.Clear();
         foreach (var (t, h) in new[] { ("ADB is available", "Bundled with CiciPDA"), ("Connect the phone (USB, or ADB over Wi-Fi)", "1 device(s) seen by ADB"), ("Enable USB debugging and allow this computer", "Authorized: Pixel 7"), ("Administrator rights", "Running elevated"), ("Tunnel components present", "Wintun, tun2socks and phone helper found") })
