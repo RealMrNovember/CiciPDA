@@ -142,3 +142,12 @@ Development preview (renders a page to PNG; `--demo` fills **sample numbers for 
 
 ### Known limitations
 Not a full layer-3 VPN and not WireGuard: TCP and UDP datagrams are relayed via SOCKS/tun2socks; ICMP is not carried; IP fragments dropped. iPhone modes are not encrypted by CiciPDA. Release readiness is **not** claimed: all file/packaging checks pass, but no physical-device validation has been done.
+
+---
+
+## v2.1.0 published (2026-11-06)
+
+* GitHub release **v2.1.0** is live with `CiciPDA-Setup-2.1.0.exe`, `update.json(.sig)`, `companion.json(.sig)` and `cicipda-companion.apk`.
+* **Auto-update verified against the real channel** (`CICI_LIVE=1 dotnet test --filter LiveUpdateChannel`): the updater is offered 2.1.0 when it reports 2.0.0, is offered nothing when it is current, and the real 50 MB installer downloads and passes the signed SHA-256 check. *Not yet exercised:* running the downloaded installer through the in-app "Update" button (needs a newer release than the installed one and UAC).
+* New: logo (`docs/images/logo.svg`, generated `app.ico` via `tools/make-icon.ps1`), README with screenshots (rendered by the app's `--preview ... --demo` mode with sample values) and architecture diagram.
+* `installer/build-installer.ps1` now fails if Inno Setup fails (previously a stale installer could be validated).
