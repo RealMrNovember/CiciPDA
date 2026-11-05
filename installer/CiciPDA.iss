@@ -1,7 +1,7 @@
 ; Inno Setup 6 script. Built by installer\build-installer.ps1 (needs ISCC.exe; NOT verified on this machine - Inno Setup is not installed).
 #define AppName "CiciPDA"
 #ifndef AppVersion
-  #define AppVersion "2.1.0"
+  #define AppVersion "2.1.1"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\artifacts\publish"
@@ -11,10 +11,15 @@
 AppId={{B5C0E9B4-6F8E-4C1B-9F55-3C1A7A3E6D21}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisherURL=https://github.com/RealMrNovember/CiciPDA
+AppPublisherURL=https://cicibyte.com
+AppSupportURL=https://github.com/RealMrNovember/CiciPDA/issues
+AppUpdatesURL=https://github.com/RealMrNovember/CiciPDA/releases
+AppCopyright=Copyright (c) 2026 CiciByte Technology, Inc.
+VersionInfoCompany=CiciByte Technology, Inc.
+VersionInfoProductName=CiciPDA
 VersionInfoVersion={#AppVersion}
-AppPublisher=CiciByte
-DefaultDirName={autopf}\CiciByte
+AppPublisher=CiciByte Technology, Inc.
+DefaultDirName={autopf}\CiciByte\CiciPDA
 DefaultGroupName=CiciByte
 PrivilegesRequired=admin
 ; Lets automation validate the installer without UAC: setup.exe /CURRENTUSER /DIR=...
@@ -22,7 +27,7 @@ PrivilegesRequiredOverridesAllowed=commandline
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\artifacts
-OutputBaseFilename=CiciPDA-Setup-{#AppVersion}
+OutputBaseFilename=CiciPDA-{#AppVersion}-windows-x64-Setup
 Compression=lzma2
 SolidCompression=yes
 UninstallDisplayIcon={app}\CiciPDA.exe

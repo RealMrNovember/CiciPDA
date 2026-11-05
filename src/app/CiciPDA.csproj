@@ -8,7 +8,12 @@
     <AssemblyName>CiciPDA</AssemblyName>
     <RootNamespace>CiciPDA.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>2.1.0</Version>
+    <Version>2.1.1</Version>
+    <Company>CiciByte Technology, Inc.</Company>
+    <Authors>CiciByte Technology, Inc.</Authors>
+    <Product>CiciPDA</Product>
+    <Copyright>Copyright (c) 2026 CiciByte Technology, Inc.</Copyright>
+    <PackageProjectUrl>https://cicibyte.com</PackageProjectUrl>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <ApplicationIcon Condition="Exists('app.ico')">app.ico</ApplicationIcon>
   </PropertyGroup>

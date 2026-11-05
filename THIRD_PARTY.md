@@ -1,5 +1,7 @@
 # Third-party components and licensing checklist
 
+CiciPDA is published by CiciByte Technology, Inc. (https://cicibyte.com).
+
 CiciPDA redistributes (or downloads) the components below. **Review each licence before shipping a public installer; this list is an engineering checklist, not legal advice.**
 
 | Component | Used for | Licence (upstream) | Distribution notes |

@@ -18,14 +18,16 @@ public sealed class UpdateManifest
 public sealed record UpdateInfo(UpdateManifest Manifest, Version Version, Uri BaseUri);
 
 /// <summary>
-/// Windows-app self-update. The release channel serves update.json + update.json.sig + the installer.
-/// The signature on update.json (pinned ECDSA release key) is verified before anything else is trusted or downloaded;
+/// Windows-app self-update. The release channel serves update-windows-x64.json + .sig + the installer.
+/// The signature on the manifest (pinned ECDSA release key) is verified before anything else is trusted or downloaded;
 /// the installer must then match the signed SHA-256. The installer is run only after the user confirms.
 /// </summary>
 public sealed class AppUpdater
 {
     public const string DefaultChannel = "https://github.com/RealMrNovember/CiciPDA/releases/latest/download/";
     public const string ProductName = "CiciPDA";
+    /// <summary>Per-platform manifest name. Only Windows x64 exists; there are no Linux or macOS builds.</summary>
+    public const string ManifestName = "update-windows-x64.json";
     readonly string _channel;
     readonly string _pinnedKey;
 
@@ -77,8 +79,8 @@ public sealed class AppUpdater
     {
         var baseUri = new Uri(_channel); RequireTrustedChannel(baseUri);
         using var http = NewHttp();
-        var json = await http.GetByteArrayAsync(new Uri(baseUri, "update.json"), ct);
-        var sig = await http.GetByteArrayAsync(new Uri(baseUri, "update.json.sig"), ct);
+        var json = await http.GetByteArrayAsync(new Uri(baseUri, ManifestName), ct);
+        var sig = await http.GetByteArrayAsync(new Uri(baseUri, ManifestName + ".sig"), ct);
         if (json.Length > 16_384 || sig.Length > 256) throw new TrustException("Update information is unexpectedly large.");
         var m = VerifyManifest(json, sig, _pinnedKey);
         var v = Version.Parse(m.Version);

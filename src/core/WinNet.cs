@@ -46,6 +46,7 @@ public sealed class JournalState
     public List<BypassRoute> BypassRoutes { get; set; } = new();
     public bool HotspotActive { get; set; }
     public string? HotspotAdapter { get; set; }
+    public string? HotspotSsid { get; set; }
     public bool IsEmpty => Tun2SocksPid == 0 && ForwardPort == 0 && BypassRoutes.Count == 0 && !HotspotActive;
 }
 public sealed record BypassRoute(string Prefix, int IfIndex);
@@ -71,7 +72,7 @@ public sealed class RecoveryJournal
         foreach (var r in s.BypassRoutes)
             await WinNet.Netsh(NetshPlan.DeleteBypass(r.Prefix, r.IfIndex));
         if (s.ForwardPort > 0 && s.AdbSerial != null) await adb.RemoveForwardAsync(s.AdbSerial, s.ForwardPort);
-        if (s.HotspotActive) await new HotspotService().StopAsync();
+        if (s.HotspotActive) await new HotspotService().RecoverAsync(s.HotspotAdapter, s.HotspotSsid);
         Reset();
     }
 }
@@ -88,6 +89,9 @@ public sealed class TunnelNetwork : IDisposable
     public NetworkInterface? Interface => WinNet.FindByName(AdapterName);
     public bool IsRunning => _t2s is { HasExited: false };
     public string? LastError { get; private set; }
+    /// <summary>True only if the IPv6 address AND both IPv6 half-routes were really installed.</summary>
+    public bool Ipv6Protected { get; private set; }
+    public string RollbackReport { get; private set; } = "";
 
     public TunnelNetwork(RecoveryJournal journal) { _journal = journal; }
 
@@ -143,7 +147,12 @@ public sealed class TunnelNetwork : IDisposable
         {
             // Send IPv6 into the tunnel too so it cannot bypass it; the phone side may not have IPv6, in which case apps fall back to IPv4.
             var r = await WinNet.Netsh(NetshPlan.SetIpv6Address(idx));
-            if (r.Ok) foreach (var p in NetshPlan.V6HalfRoutes) await WinNet.Netsh(NetshPlan.AddIpv6Route(p, idx));
+            if (r.Ok)
+            {
+                bool all = true;
+                foreach (var p in NetshPlan.V6HalfRoutes) { var rr = await WinNet.Netsh(NetshPlan.AddIpv6Route(p, idx)); if (!rr.Ok) { all = false; Log.Warn("route", $"IPv6 route {p} failed: {rr.Combined}"); } }
+                Ipv6Protected = all;
+            }
             else Log.Warn("route", "IPv6 leak protection could not be applied: " + r.Combined);
         }
     }
@@ -156,7 +165,8 @@ public sealed class TunnelNetwork : IDisposable
 
     public async Task StopAsync()
     {
-        foreach (var b in _bypass.ToList())
+        var removed = _bypass.ToList();
+        foreach (var b in removed)
         {
             var r = await WinNet.Netsh(NetshPlan.DeleteBypass(b.Prefix, b.IfIndex));
             if (!r.Ok) Log.Warn("route", $"Could not remove route {b.Prefix}: {r.Combined}");
@@ -170,14 +180,20 @@ public sealed class TunnelNetwork : IDisposable
             if (WinNet.FindByName(AdapterName) != null) Log.Warn("adapter", "Adapter is still present after stopping tun2socks.");
             else Log.Info("adapter", "Virtual adapter removed.");
         }
-        IfIndex = -1;
+        if (removed.Count > 0 || IfIndex > 0)
+        {
+            var (ok, detail) = await RollbackCheck.VerifyAsync(removed);
+            RollbackReport = detail;
+            if (ok) Log.Ok("rollback", detail); else Log.Warn("rollback", detail);
+        }
+        IfIndex = -1; Ipv6Protected = false;
         _journal.State.Tun2SocksPid = 0; _journal.State.BypassRoutes.Clear(); _journal.Save();
     }
 
     public void Dispose() { try { StopAsync().Wait(8000); } catch { } }
 }
 
-public sealed record CheckResult(string Id, string Title, bool Passed, bool Required, string Detail, string? Fix = null, long Ms = 0);
+public sealed record CheckResult(string Id, string Title, bool Passed, bool Required, string Detail, string? Fix = null, long Ms = 0, string Scope = "Internet");
 
 /// <summary>Real data-path verification. Nothing here is simulated or registry-forced.</summary>
 public static class Verifier
@@ -190,6 +206,46 @@ public static class Verifier
         try { var (ok, d) = await f(); return new CheckResult(id, title, ok, required, d, ok ? null : fix, sw.ElapsedMilliseconds); }
         catch (Exception ex) { return new CheckResult(id, title, false, required, ex.Message, fix, sw.ElapsedMilliseconds); }
     }
+
+    /// <summary>LOCAL readiness only: the adapter is up, has an IPv4 address and a sane MTU. This says nothing about the internet.</summary>
+    public static Task<CheckResult> AdapterReady(int ifIndex) => Time("adapter", "Adapter ready (local)", true,
+        "The network adapter is not up or has no IPv4 address. Disconnect and connect again.", () =>
+    {
+        var ni = WinNet.FindByIndex(ifIndex);
+        if (ni == null) return Task.FromResult((false, "The adapter is not present."));
+        var v4 = ni.GetIPProperties().UnicastAddresses.FirstOrDefault(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
+        int mtu = 0; try { mtu = ni.GetIPProperties().GetIPv4Properties().Mtu; } catch { }
+        bool ok = ni.OperationalStatus == OperationalStatus.Up && v4 != null;
+        return Task.FromResult((ok, $"{ni.Name}: {ni.OperationalStatus}, IPv4 {(v4?.Address.ToString() ?? "none")}, MTU {mtu}. (Local readiness only; internet is checked below.)"));
+    }).ContinueWith(t => t.Result with { Scope = "Local" });
+
+    /// <summary>Real UDP: a DNS query sent over UDP to the configured server must be answered (carried through the phone for tunnel methods).</summary>
+    public static Task<CheckResult> UdpDns(string server, int port = 53) => Time("udp", "UDP connectivity (DNS over UDP)", false,
+        "UDP did not get an answer. Some networks block UDP; browsers fall back to TCP, but QUIC and UDP apps will not work.", async () =>
+    {
+        var id = (ushort)Random.Shared.Next(1, 65535);
+        using var udp = new System.Net.Sockets.UdpClient();
+        udp.Connect(server, port);
+        var q = DnsQuery.Build("example.com", id);
+        await udp.SendAsync(q);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+        var r = await udp.ReceiveAsync(cts.Token);
+        bool ok = DnsQuery.IsResponseFor(id, r.Buffer);
+        return (ok, ok ? $"{server}:{port} answered a UDP DNS query ({r.Buffer.Length} bytes)" : "A UDP reply arrived but was not a valid DNS answer");
+    });
+
+    /// <summary>Reports IPv6 accurately as two separate facts: is the leak protection applied, and does IPv6 actually work end to end.</summary>
+    public static Task<CheckResult> Ipv6(bool settingOn, bool protectionApplied) => Time("ipv6", "IPv6 behaviour", false, null, async () =>
+    {
+        bool hasV6 = NetworkInterface.GetAllNetworkInterfaces().Any(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback
+            && n.GetIPProperties().UnicastAddresses.Any(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 && !a.Address.IsIPv6LinkLocal && !a.Address.IsIPv6UniqueLocal));
+        var rtt = await TcpLatency("2606:4700:4700::1111", 443, TimeSpan.FromSeconds(4));
+        string prot = !settingOn ? "leak protection is OFF in Settings (IPv6 traffic, if your PC has IPv6, bypasses the tunnel)"
+                    : protectionApplied ? "leak protection is ACTIVE (IPv6 routes point into the tunnel)"
+                    : "leak protection could NOT be applied (see Activity log); IPv6 traffic may bypass the tunnel";
+        string e2e = rtt != null ? "IPv6 reaches the internet" : "IPv6 internet is not available through this connection (applications fall back to IPv4)";
+        return (true, $"{prot}; {e2e}" + (hasV6 ? "." : " (this PC has no global IPv6 address)."));
+    });
 
     public static Task<CheckResult> DefaultRoute(int expectedIfIndex) => Time("route", "Default route", true,
         "Another adapter or VPN has priority for internet traffic. Disconnect that VPN, or for hotspot modes unplug Ethernet / disable other Wi-Fi adapters, then retry.", () =>
@@ -244,5 +300,53 @@ public static class Verifier
             return sw.Elapsed;
         }
         catch { return null; }
+    }
+}
+
+
+/// <summary>Minimal DNS message helpers used by the UDP connectivity check.</summary>
+public static class DnsQuery
+{
+    public static byte[] Build(string name, ushort id)
+    {
+        var m = new List<byte> { (byte)(id >> 8), (byte)id, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0 };   // RD set, one question
+        foreach (var label in name.Split('.')) { m.Add((byte)label.Length); m.AddRange(System.Text.Encoding.ASCII.GetBytes(label)); }
+        m.AddRange(new byte[] { 0, 0, 1, 0, 1 });                                                       // end of name, type A, class IN
+        return m.ToArray();
+    }
+
+    public static bool IsResponseFor(ushort id, byte[] buf) => buf.Length >= 12 && buf[0] == (byte)(id >> 8) && buf[1] == (byte)id && (buf[2] & 0x80) != 0;
+}
+
+public static class RollbackCheck
+{
+    /// <summary>Parses `netsh interface ipv4 show route` output for a prefix on an interface index.</summary>
+    public static bool RouteListed(string netshOutput, string prefix, int ifIndex)
+    {
+        foreach (var line in netshOutput.Split('\n'))
+        {
+            var cols = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (cols.Length >= 5 && cols.Any(c => c == prefix) && cols.Any(c => c == ifIndex.ToString())) return true;
+        }
+        return false;
+    }
+
+    /// <summary>After teardown: the tunnel adapter must be gone (taking its address, DNS and routes with it) and every pinned route must be deleted.</summary>
+    public static async Task<(bool ok, string detail)> VerifyAsync(IEnumerable<BypassRoute> removed)
+    {
+        var problems = new List<string>();
+        if (WinNet.FindByName(TunnelNetwork.AdapterName) != null) problems.Add("the CiciPDA adapter still exists");
+        var show = await WinNet.Netsh("interface", "ipv4", "show", "route");
+        foreach (var b in removed)
+            if (RouteListed(show.Stdout, b.Prefix, b.IfIndex))
+            {
+                await WinNet.Netsh(NetshPlan.DeleteBypass(b.Prefix, b.IfIndex));                         // one retry
+                var again = await WinNet.Netsh("interface", "ipv4", "show", "route");
+                if (RouteListed(again.Stdout, b.Prefix, b.IfIndex)) problems.Add($"route {b.Prefix} (interface {b.IfIndex}) is still present");
+            }
+        int best = WinNet.BestInterfaceFor(System.Net.IPAddress.Parse("1.1.1.1"));
+        var ni = WinNet.FindByIndex(best);
+        if (ni?.Name == TunnelNetwork.AdapterName) problems.Add("internet traffic would still be routed into the CiciPDA adapter");
+        return problems.Count == 0 ? (true, "Rollback verified: adapter, DNS and routes are gone; traffic uses " + (ni?.Name ?? "the normal interface") + ".") : (false, "Rollback incomplete: " + string.Join("; ", problems) + ".");
     }
 }

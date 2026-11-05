@@ -1,10 +1,10 @@
 {
     "package":  "app.cicibyte.cicipda",
-    "versionName":  "2.0.0",
-    "versionCode":  20000,
+    "versionName":  "2.1.1",
+    "versionCode":  20101,
     "protocol":  3,
     "minSdk":  24,
     "apk":  "cicipda-companion.apk",
-    "sha256":  "e463598726e7b4ff7cfc4ecd52c215504bed1d2c7c0c5efb5d21c76234f1a9f5",
+    "sha256":  "85c48902964365cf6942662a336cd4792b8d77343ffb2d9e740bc6636426df3f",
     "signerCertSha256":  "f0ac0c9b74d9c0661455421c8d6728ba91c7dfdeb52635511d9ab04293af4725"
 }

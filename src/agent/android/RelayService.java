@@ -7,83 +7,141 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 
 /**
- * Foreground relay service. Started and stopped by the paired Windows PC through adb (the shell holds android.permission.DUMP).
- *   am start-foreground-service -n app.cicibyte.cicipda/.RelayService -a app.cicibyte.cicipda.START --es key HEX --ei port N
- * Android limits background services, so this runs as a visible foreground service for as long as the user is connected.
- * If the system restarts it, it resumes with the stored pairing key and port; it never exposes anything beyond 127.0.0.1.
+ * Foreground relay service, driven only by the paired Windows PC through adb (the adb shell holds android.permission.DUMP,
+ * which the manifest requires of any caller; ordinary apps cannot start, stop, re-pair or unpair it).
+ *
+ *   START  --es key HEX64 --ei port N   store the session key (Keystore-wrapped), start the relay on 127.0.0.1:port
+ *   STOP                                stop the relay AND delete the stored key
+ *   UNPAIR                              same as STOP; explicit "forget this PC"
+ *
+ * The key is session-scoped. It is never logged. If the system restarts the service (null intent) it resumes only if a
+ * session key is still stored, i.e. only inside a session the PC has not ended. Android may stop foreground services at any
+ * time and, from Android 12, may refuse to start one from the background; both cases end in a clean stop and the PC
+ * reconnects with a new session key.
  */
 public class RelayService extends Service {
     static final String TAG = "CiciPDA";
     public static final String ACTION_START = "app.cicibyte.cicipda.START";
     public static final String ACTION_STOP = "app.cicibyte.cicipda.STOP";
-    public static final String VERSION = "2.0.0";
+    public static final String ACTION_UNPAIR = "app.cicibyte.cicipda.UNPAIR";
+    public static final String VERSION = "2.1.1";
     static final String CHANNEL = "relay";
     static volatile Relay relay;
-    static volatile int port;
 
     ConnectivityManager cm;
+    final Handler handler = new Handler(Looper.getMainLooper());
+    static final long IDLE_LIMIT_MS = 180000;   // the PC polls every 5 s; silence this long means the PC is gone (USB unplugged, app killed)
+    final Runnable watchdog = new Runnable() {
+        public void run() {
+            Relay r = relay;
+            if (r == null) return;
+            if (System.currentTimeMillis() - r.lastAuthenticated > IDLE_LIMIT_MS && r.activeConns.get() == 0) {
+                Log.i(TAG, "no authenticated PC for " + (IDLE_LIMIT_MS / 1000) + " s; ending the session");
+                endSession();
+            } else handler.postDelayed(this, 30000);
+        }
+    };
 
     @Override public IBinder onBind(Intent i) { return null; }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        SharedPreferences sp = getSharedPreferences("pairing", MODE_PRIVATE);
-        String action = intent != null ? intent.getAction() : ACTION_START; // null intent = system restart
-        showForeground();
-        if (ACTION_STOP.equals(action)) { stopRelay(); stopForeground(true); stopSelf(); return START_NOT_STICKY; }
+        String action = intent != null ? intent.getAction() : ACTION_START;   // null intent = system restart of a sticky service
 
-        String hex = intent != null ? intent.getStringExtra("key") : null;
-        if (hex != null) {
-            if (hex.length() != 64) { Log.w(TAG, "rejected pairing key"); return START_NOT_STICKY; }
-            sp.edit().putString("key", hex).apply();           // (re)pair: the adb-authorized PC is the trust root
-        } else hex = sp.getString("key", null);
-        if (hex == null) { Log.w(TAG, "no pairing key"); stopSelf(); return START_NOT_STICKY; }
+        if (ACTION_STOP.equals(action) || ACTION_UNPAIR.equals(action)) {
+            // startForegroundService() contract: a started service must call startForeground() before it can stop itself.
+            if (!showForeground()) { endSession(); return START_NOT_STICKY; }
+            endSession();
+            return START_NOT_STICKY;
+        }
 
-        int want = intent != null ? intent.getIntExtra("port", 0) : sp.getInt("port", 0);
+        byte[] key = null;
+        int want;
+        try {
+            String hex = intent != null ? intent.getStringExtra("key") : null;
+            if (hex != null) {
+                if (hex.length() != 64) { Log.w(TAG, "rejected malformed pairing key"); endSession(); return START_NOT_STICKY; }
+                key = new byte[32];
+                for (int i = 0; i < 32; i++) key[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
+                want = intent.getIntExtra("port", 0);
+                PairingStore.save(this, key, want);          // survives a system restart of this service, nothing else
+            } else {
+                key = PairingStore.load(this);
+                want = PairingStore.port(this);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "pairing key handling failed: " + e.getClass().getSimpleName());
+            endSession();
+            return START_NOT_STICKY;
+        }
+        if (key == null) { Log.w(TAG, "no active session key; stopping"); endSession(); return START_NOT_STICKY; }
+        if (!showForeground()) { endSession(); return START_NOT_STICKY; }
+
         stopRelay();
         try {
-            byte[] k = new byte[32];
-            for (int i = 0; i < 32; i++) k[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
-            relay = new Relay(k, VERSION, new Relay.StatusProvider() { public String extra() { return networkJson(); } });
-            port = relay.start(want);
-            sp.edit().putInt("port", port).apply();
+            relay = new Relay(key, VERSION, new Relay.StatusProvider() { public String extra() { return networkJson(); } });
+            int port = relay.start(want);
+            PairingStore.save(this, key, port);
             Log.i(TAG, "relay listening on 127.0.0.1:" + port);
+            handler.removeCallbacks(watchdog);
+            handler.postDelayed(watchdog, 30000);
         } catch (Exception e) {
-            Log.e(TAG, "relay start failed: " + e);
-            stopSelf();
+            Log.e(TAG, "relay start failed: " + e.getClass().getSimpleName());
+            endSession();
             return START_NOT_STICKY;
+        } finally {
+            java.util.Arrays.fill(key, (byte) 0);
         }
         return START_STICKY;
     }
 
     void stopRelay() { Relay r = relay; if (r != null) r.stop(); relay = null; }
 
+    /** Ends the session: relay down, stored key deleted, notification removed. */
+    void endSession() {
+        handler.removeCallbacks(watchdog);
+        stopRelay();
+        PairingStore.clear(this);
+        stopForeground(true);
+        stopSelf();
+    }
+
     @Override public void onDestroy() { stopRelay(); super.onDestroy(); }
 
-    void showForeground() {
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        Notification.Builder b;
-        if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Connection sharing", NotificationManager.IMPORTANCE_LOW));
-            b = new Notification.Builder(this, CHANNEL);
-        } else b = new Notification.Builder(this);
-        Intent open = new Intent(this, MainActivity.class);
-        PendingIntent pi = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Notification n = b.setContentTitle("CiciPDA is sharing this phone's connection")
-            .setContentText("Paired Windows PC via USB debugging. Disconnect from the PC to stop.")
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth).setOngoing(true).setContentIntent(pi).build();
-        if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        else startForeground(1, n);
+    /** @return false if Android refused to promote the service to the foreground. */
+    boolean showForeground() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            Notification.Builder b;
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Connection sharing", NotificationManager.IMPORTANCE_LOW));
+                b = new Notification.Builder(this, CHANNEL);
+            } else b = new Notification.Builder(this);
+            Intent open = new Intent(this, MainActivity.class);
+            int piFlags = Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT : PendingIntent.FLAG_UPDATE_CURRENT;
+            PendingIntent pi = PendingIntent.getActivity(this, 0, open, piFlags);
+            Notification n = b.setContentTitle("CiciPDA is sharing this phone's connection")
+                .setContentText("Paired Windows PC via USB debugging. Disconnect from the PC to stop.")
+                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth).setOngoing(true).setContentIntent(pi).build();
+            if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            else startForeground(1, n);
+            return true;
+        } catch (RuntimeException e) {
+            // e.g. ForegroundServiceStartNotAllowedException (Android 12+), SecurityException for a missing FGS type permission
+            Log.e(TAG, "cannot enter foreground: " + e.getClass().getSimpleName());
+            return false;
+        }
     }
 
     /** Structured network diagnostics reported through the authenticated status command. */

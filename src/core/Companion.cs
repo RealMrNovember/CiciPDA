@@ -142,34 +142,46 @@ public sealed class CompanionManager
     public Task ShowOnPhoneAsync(string serial, CancellationToken ct) =>
         Shell(serial, ct, "am", "start", "-n", ReleaseTrust.PackageName + "/.MainActivity");
 
-    // ---------- pairing key + service ----------
-    public static byte[] LoadOrCreatePairingKey(bool rotate = false)
+    // ---------- session key + service ----------
+    /// <summary>
+    /// A fresh random key for ONE connection. Nothing is persisted on the PC: when the session ends the key is simply discarded,
+    /// and the phone deletes its copy on STOP/UNPAIR, so no long-lived pairing secret exists on either side.
+    /// </summary>
+    public static byte[] NewSessionKey()
     {
-        var path = AppPaths.DataFile("pairing.key");
-        if (!rotate && File.Exists(path))
-        {
-            var b = Convert.FromBase64String(Secret.Unprotect(File.ReadAllText(path).Trim()));
-            if (b.Length == 32) { Log.RegisterSecret(Convert.ToHexString(b).ToLowerInvariant()); return b; }
-        }
         var k = RandomNumberGenerator.GetBytes(32);
-        File.WriteAllText(path, Secret.Protect(Convert.ToBase64String(k)));
-        Log.RegisterSecret(Convert.ToHexString(k).ToLowerInvariant());
+        Log.RegisterSecret(Convert.ToHexString(k).ToLowerInvariant());      // masked in every log line from now on
+        try { var old = AppPaths.DataFile("pairing.key"); if (File.Exists(old)) File.Delete(old); } catch { }   // remove the pre-2.1.1 persistent key
         return k;
     }
 
-    /// <summary>Starts the foreground relay service. The pairing key travels over adb's stdin, never in a command line.</summary>
+    string Action(string name) => $"{ReleaseTrust.PackageName}.{name}";
+
+    /// <summary>
+    /// Starts the foreground relay service. Runtime path of the key: PC memory -> adb's stdin pipe (never a PC command line)
+    /// -> `am start-foreground-service ... --es key` run by the phone's shell -> Intent extra delivered to the service ->
+    /// Keystore-wrapped storage on the phone. On the phone the key is visible, for the duration of that command, only to the
+    /// shell/system (the same trust level as USB debugging itself); it is not reachable by ordinary apps because the service
+    /// requires android.permission.DUMP from callers.
+    /// </summary>
     public async Task StartServiceAsync(string serial, byte[] key, int remotePort, CancellationToken ct)
     {
         var hex = Convert.ToHexString(key).ToLowerInvariant();
-        var script = $"am start-foreground-service -n {ReleaseTrust.PackageName}/.RelayService -a {ReleaseTrust.PackageName}.START --es key {hex} --ei port {remotePort}\nexit\n";
+        var script = $"am start-foreground-service -n {ReleaseTrust.PackageName}/.RelayService -a {Action("START")} --es key {hex} --ei port {remotePort}\nexit\n";
         var r = await ProcessRunner.RunAsync(Adb, new[] { "-s", serial, "shell" }, TimeSpan.FromSeconds(20), ct, stdin: script);
-        var o = r.Combined;
+        var o = Log.Redact(r.Combined);
         if (!r.Ok || o.Contains("Error") || o.Contains("Exception") || o.Contains("not found"))
             throw new InvalidOperationException("The companion service could not be started: " + (o.Length > 300 ? o[..300] : o));
     }
 
-    public Task StopServiceAsync(string serial) =>
-        ProcessRunner.RunAsync(Adb, new[] { "-s", serial, "shell", "am", "startservice", "-n", ReleaseTrust.PackageName + "/.RelayService", "-a", ReleaseTrust.PackageName + ".STOP" }, TimeSpan.FromSeconds(10));
+    /// <summary>Stops the relay and makes the phone delete the session key.</summary>
+    public Task StopServiceAsync(string serial) => SendAsync(serial, "STOP");
+
+    /// <summary>Explicit "forget this PC": stops the service and deletes the stored key and its Keystore wrapper.</summary>
+    public Task UnpairAsync(string serial) => SendAsync(serial, "UNPAIR");
+
+    Task SendAsync(string serial, string action) =>
+        ProcessRunner.RunAsync(Adb, new[] { "-s", serial, "shell", "am", "start-foreground-service", "-n", ReleaseTrust.PackageName + "/.RelayService", "-a", Action(action) }, TimeSpan.FromSeconds(10));
 
     /// <summary>Forward a free local port to the service and wait until it answers an authenticated status request.</summary>
     public async Task<(int localPort, string statusJson)> WaitReadyAsync(string serial, byte[] key, int remotePort, CancellationToken ct)

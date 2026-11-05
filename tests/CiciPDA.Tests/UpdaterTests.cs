@@ -74,13 +74,13 @@ public class ReleaseArtifactTests
     {
         string? dir = null;
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
-            if (File.Exists(Path.Combine(d.FullName, "artifacts", "update.json"))) { dir = Path.Combine(d.FullName, "artifacts"); break; }
+            if (File.Exists(Path.Combine(d.FullName, "artifacts", "update-windows-x64.json"))) { dir = Path.Combine(d.FullName, "artifacts"); break; }
         if (dir == null) return;   // artifacts are build outputs, not committed
-        var m = AppUpdater.VerifyManifest(File.ReadAllBytes(Path.Combine(dir, "update.json")), File.ReadAllBytes(Path.Combine(dir, "update.json.sig")), ReleaseTrust.PinnedMetadataKey);
+        var m = AppUpdater.VerifyManifest(File.ReadAllBytes(Path.Combine(dir, "update-windows-x64.json")), File.ReadAllBytes(Path.Combine(dir, "update-windows-x64.json.sig")), ReleaseTrust.PinnedMetadataKey);
         var setup = Path.Combine(dir, m.Installer);
         Assert.Equal(m.Sha256, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(setup))).ToLowerInvariant());
         var c = ReleaseTrust.Verify(Path.Combine(dir, "companion.json"), Path.Combine(dir, "companion.json.sig"), dir, "artifacts");
-        Assert.Equal(20000, c.Meta.VersionCode);
+        Assert.Equal(20101, c.Meta.VersionCode);
         Assert.False(ReleaseTrust.IsDevelopmentTrust);
     }
 }

@@ -28,15 +28,19 @@ Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null=[Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]
 $null=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
 $null=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
+$null=[Windows.Networking.NetworkOperators.TetheringWiFiBand,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
 $asTask=([System.WindowsRuntimeSystemExtensions].GetMethods()|Where-Object{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'})[0]
 function Await($op,$t){$m=$asTask.MakeGenericMethod($t);$x=$m.Invoke($null,@($op));$x.Wait(-1)|Out-Null;$x.Result}
 $asTaskA=([System.WindowsRuntimeSystemExtensions].GetMethods()|Where-Object{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction'})[0]
 function AwaitA($op){$x=$asTaskA.Invoke($null,@($op));$x.Wait(-1)|Out-Null}
-$want=([guid]$env:CICI_ADAPTER).ToString().ToLower()
+$want=''; if($env:CICI_ADAPTER){ $want=([guid]$env:CICI_ADAPTER).ToString().ToLower() }
 $prof=$null
 foreach($p in [Windows.Networking.Connectivity.NetworkInformation]::GetConnectionProfiles()){
-  if($p.NetworkAdapter -ne $null -and $p.NetworkAdapter.NetworkAdapterId.ToString().ToLower() -eq $want){$prof=$p;break}
+  if($want -ne '' -and $p.NetworkAdapter -ne $null -and $p.NetworkAdapter.NetworkAdapterId.ToString().ToLower() -eq $want){$prof=$p;break}
 }
+# Recovery only (CICI_ANY=1): the upstream adapter no longer exists, but the hotspot configuration is system-wide, so any profile can reach it.
+# Ownership is still enforced by comparing the current SSID with the one CiciPDA configured.
+if($null -eq $prof -and $env:CICI_ANY -eq '1'){ foreach($p in [Windows.Networking.Connectivity.NetworkInformation]::GetConnectionProfiles()){ if([Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::GetTetheringCapabilityFromConnectionProfile($p).ToString() -eq 'Enabled'){$prof=$p;break} } }
 ";
 
     const string CheckScript = Pre + @"
@@ -47,18 +51,25 @@ if($cap -eq 'Enabled'){ $m=[Windows.Networking.NetworkOperators.NetworkOperatorT
 (@{found=$true;profile=$prof.ProfileName;capability=$cap;state=$state}|ConvertTo-Json -Compress)
 ";
 
+    // Read-only: the hotspot configuration as it is BEFORE CiciPDA touches it.
+    const string ReadScript = Pre + @"
+if($null -eq $prof){ throw 'NOPROFILE' }
+$m=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($prof)
+$cur=$m.GetCurrentAccessPointConfiguration()
+$b='Auto'; try{ $b=$cur.Band.ToString() }catch{}
+(@{ssid=$cur.Ssid;pass=$cur.Passphrase;band=$b;state=$m.TetheringOperationalState.ToString()}|ConvertTo-Json -Compress)
+";
+
     const string StartScript = Pre + @"
 if($null -eq $prof){ throw 'NOPROFILE' }
 $cap=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::GetTetheringCapabilityFromConnectionProfile($prof).ToString()
 if($cap -ne 'Enabled'){ throw ('CAP:'+$cap) }
 $m=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($prof)
 if($m.TetheringOperationalState.ToString() -ne 'Off'){ throw 'ALREADYON' }
-$cur=$m.GetCurrentAccessPointConfiguration()
-$prev=@{ssid=$cur.Ssid;pass=$cur.Passphrase;band=$cur.Band.ToString()}
-[Console]::Out.WriteLine('PREV:'+($prev|ConvertTo-Json -Compress))
 $cfg=New-Object Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration
 $cfg.Ssid=$env:CICI_SSID
 $cfg.Passphrase=$env:CICI_PASS
+if($env:CICI_BAND){ try{ $cfg.Band=[enum]::Parse([Windows.Networking.NetworkOperators.TetheringWiFiBand],$env:CICI_BAND) }catch{} }   # keep the user's band instead of resetting it to Auto
 AwaitA ($m.ConfigureAccessPointAsync($cfg))
 $r=Await ($m.StartTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
 if($r.Status.ToString() -ne 'Success'){ throw ('START:'+$r.Status+' '+$r.AdditionalErrorMessage) }
@@ -73,15 +84,19 @@ $n=0; try{ $n=$m.ClientCount }catch{}
 ";
 
     const string StopScript = Pre + @"
-if($null -eq $prof){ 'OK'; exit 0 }
+if($null -eq $prof){ 'NOPROFILE'; exit 0 }
 $m=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($prof)
+$cur=$m.GetCurrentAccessPointConfiguration()
+# Ownership: only touch a hotspot that is still configured with the SSID CiciPDA set. Anything else belongs to the user.
+if(-not $env:CICI_OWN_SSID -or $cur.Ssid -ne $env:CICI_OWN_SSID){ 'NOTOURS'; exit 0 }
 if($m.TetheringOperationalState.ToString() -ne 'Off'){ $null=Await ($m.StopTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult]) }
 if($env:CICI_PREV_SSID){
   $cfg=New-Object Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration
   $cfg.Ssid=$env:CICI_PREV_SSID; $cfg.Passphrase=$env:CICI_PREV_PASS
+  if($env:CICI_PREV_BAND){ try{ $cfg.Band=[enum]::Parse([Windows.Networking.NetworkOperators.TetheringWiFiBand],$env:CICI_PREV_BAND) }catch{} }
   AwaitA ($m.ConfigureAccessPointAsync($cfg))
-}
-'OK'
+  'RESTORED'
+} else { 'STOPPED' }
 ";
 
     readonly string _prevFile = AppPaths.DataFile("hotspot-prev.json");
@@ -90,6 +105,10 @@ if($env:CICI_PREV_SSID){
     public int ClientCount { get; private set; }
     public string? ProbeUrl { get; private set; }
     public string? UpstreamGuid { get; private set; }
+    /// <summary>SSID CiciPDA configured; proves ownership during stop and crash recovery.</summary>
+    public string? OwnSsid { get; private set; }
+    /// <summary>Plain-language note about what could and could not be restored (shown in the log/UI).</summary>
+    public string RestoreNote { get; private set; } = "";
     HotspotProbeServer? _probe;
 
     static Task<ProcResult> Ps(string script, IDictionary<string, string> env, int timeoutSec = 45) =>
@@ -141,12 +160,30 @@ if($env:CICI_PREV_SSID){
         if (passphrase.Length is < 8 or > 63) return Fail("Passphrase must be 8-63 characters.");
         Log.RegisterSecret(passphrase);
         State = HotspotState.Starting; Detail = "Starting Mobile Hotspot";
-        var r = await Ps(StartScript, new Dictionary<string, string> { ["CICI_ADAPTER"] = adapterGuid, ["CICI_SSID"] = ssid, ["CICI_PASS"] = passphrase }, 60);
-        // The script prints the previous configuration first so it can be restored; keep it protected at rest.
-        foreach (var line in r.Stdout.Split('\n'))
-            if (line.StartsWith("PREV:")) { try { File.WriteAllText(_prevFile, Secret.Protect(line[5..].Trim())); } catch (Exception ex) { Log.Warn("hotspot", "Could not save previous hotspot configuration: " + ex.Message); } }
+
+        // 1) Snapshot the user's current configuration BEFORE changing anything, and persist it (DPAPI) so a crash cannot lose it.
+        var env = new Dictionary<string, string> { ["CICI_ADAPTER"] = adapterGuid, ["CICI_SSID"] = ssid, ["CICI_PASS"] = passphrase };
+        var read = await Ps(ReadScript, new Dictionary<string, string> { ["CICI_ADAPTER"] = adapterGuid }, 30);
+        if (read.Ok)
+        {
+            try
+            {
+                using var d = JsonDocument.Parse(read.Stdout.Trim());
+                if (d.RootElement.GetProperty("state").GetString() != "Off") return Fail("Windows Mobile Hotspot is already on for a connection. Turn it off in Settings > Network & internet > Mobile hotspot, then connect again. CiciPDA will not take over a hotspot it did not start.");
+                File.WriteAllText(_prevFile, Secret.Protect(read.Stdout.Trim()));
+                var band = d.RootElement.TryGetProperty("band", out var b) ? b.GetString() : null;
+                if (!string.IsNullOrEmpty(band)) env["CICI_BAND"] = band;
+            }
+            catch (Exception ex) when (ex is JsonException or KeyNotFoundException or IOException) { return Fail("Could not read the current hotspot configuration, so nothing was changed: " + ex.Message); }
+        }
+        else if (read.Combined.Contains("NOPROFILE")) return Fail(Explain("NoProfile"));
+        else return Fail("Could not read the current hotspot configuration, so nothing was changed: " + read.Combined);
+
+        OwnSsid = ssid;
+        var r = await Ps(StartScript, env, 60);
         if (!r.Ok || !r.Stdout.Contains("OK"))
         {
+            await RestoreConfigurationAsync();                         // the new SSID may already have been written; put the old one back
             var e = r.Combined;
             if (e.Contains("NOPROFILE")) return Fail(Explain("NoProfile"));
             if (e.Contains("ALREADYON")) return Fail("Windows Mobile Hotspot is already on for a connection. Turn it off in Settings > Network & internet > Mobile hotspot, then connect again. CiciPDA will not take over a hotspot it did not start.");
@@ -204,31 +241,49 @@ if($env:CICI_PREV_SSID){
         else { State = HotspotState.ClientConnected; Detail = $"{ClientCount} device(s) connected." + (ProbeUrl != null ? " Open " + ProbeUrl + " on a connected device to verify its internet." : " Internet on the device is not verified."); }
     }
 
-    /// <summary>Stops the hotspot and restores the configuration that existed before CiciPDA changed it.</summary>
+    /// <summary>Stops the hotspot (only if it is still ours) and restores the configuration that existed before CiciPDA changed it.</summary>
     public async Task StopAsync()
     {
         try { _probe?.Dispose(); } catch { } _probe = null; ProbeUrl = null;
-        var env = new Dictionary<string, string> { ["CICI_ADAPTER"] = UpstreamGuid ?? Guid.Empty.ToString() };
-        if (UpstreamGuid == null) { await StopFromJournalAsync(env); return; }
+        await RestoreConfigurationAsync();
+        State = HotspotState.Unavailable; Detail = ""; ClientCount = 0; UpstreamGuid = null;
+    }
+
+    /// <summary>
+    /// Crash / restart recovery. The upstream adapter may no longer exist, so the system-wide hotspot configuration is reached through any
+    /// capable profile; ownership is proven by the SSID that CiciPDA configured. A hotspot that does not carry that SSID is never touched.
+    /// </summary>
+    public async Task RecoverAsync(string? adapterGuid, string? ownSsid)
+    {
+        UpstreamGuid = adapterGuid; OwnSsid = ownSsid;
+        if (string.IsNullOrEmpty(ownSsid)) { Log.Warn("hotspot", "Recovery found no record of the SSID CiciPDA used; the hotspot configuration is left unchanged."); try { File.Delete(_prevFile); } catch { } return; }
+        await RestoreConfigurationAsync(anyProfile: true);
+        UpstreamGuid = null;
+    }
+
+    async Task RestoreConfigurationAsync(bool anyProfile = false)
+    {
+        var env = new Dictionary<string, string> { ["CICI_ADAPTER"] = UpstreamGuid ?? "", ["CICI_OWN_SSID"] = OwnSsid ?? "" };
+        if (anyProfile) env["CICI_ANY"] = "1";
+        bool havePrev = false;
         if (File.Exists(_prevFile))
             try
             {
                 using var d = JsonDocument.Parse(Secret.Unprotect(File.ReadAllText(_prevFile)));
                 env["CICI_PREV_SSID"] = d.RootElement.GetProperty("ssid").GetString() ?? "";
                 env["CICI_PREV_PASS"] = d.RootElement.GetProperty("pass").GetString() ?? "";
+                if (d.RootElement.TryGetProperty("band", out var band)) env["CICI_PREV_BAND"] = band.GetString() ?? "";
+                havePrev = true;
             }
-            catch (Exception ex) when (ex is JsonException or KeyNotFoundException) { Log.Warn("hotspot", "Previous hotspot configuration unreadable; leaving the current one."); }
+            catch (Exception ex) when (ex is JsonException or KeyNotFoundException) { Log.Warn("hotspot", "The saved previous hotspot configuration is unreadable."); }
         var r = await Ps(StopScript, env, 40);
-        if (!r.Ok) Log.Warn("hotspot", "Stop reported: " + r.Combined); else Log.Info("hotspot", "Hotspot stopped; previous configuration restored where available.");
+        var o = r.Stdout.Trim();
+        if (!r.Ok) { RestoreNote = "Stopping the hotspot reported: " + r.Combined; Log.Warn("hotspot", RestoreNote); return; }
+        if (o.Contains("NOTOURS")) { RestoreNote = "The hotspot is not (or no longer) configured with the SSID CiciPDA used, so it was left untouched."; Log.Info("hotspot", RestoreNote); }
+        else if (o.Contains("NOPROFILE")) { RestoreNote = "Windows has no connection profile that can reach the hotspot configuration; nothing was changed."; Log.Warn("hotspot", RestoreNote); }
+        else if (o.Contains("RESTORED")) { RestoreNote = "Hotspot stopped. Restored the previous SSID, passphrase and band. Other Mobile Hotspot options were never modified by CiciPDA."; Log.Info("hotspot", RestoreNote); }
+        else { RestoreNote = havePrev ? "Hotspot stopped." : "Hotspot stopped. No earlier configuration was recorded, so the SSID/passphrase CiciPDA set remain configured in Windows."; Log.Warn("hotspot", RestoreNote); }
         try { if (File.Exists(_prevFile)) File.Delete(_prevFile); } catch { }
-        State = HotspotState.Unavailable; Detail = ""; ClientCount = 0; UpstreamGuid = null;
-    }
-
-    async Task StopFromJournalAsync(Dictionary<string, string> env)
-    {
-        // Crash recovery: the adapter is gone, so find any hotspot we started via the journal-recorded GUID.
-        var guid = new RecoveryJournal().State.HotspotAdapter;
-        if (guid != null) { env["CICI_ADAPTER"] = guid; UpstreamGuid = guid; await StopAsync(); }
     }
 }
 

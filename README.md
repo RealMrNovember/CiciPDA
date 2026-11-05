@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="docs/images/logo.svg" width="112" alt="CiciPDA logo">
-
-# CiciPDA
+<img src="docs/images/logo-horizontal.png" width="720" alt="CiciPDA - your phone's internet, on Windows. CiciByte Technology, Inc.">
 
 **Use your phone's internet on your Windows PC — one app, real connectivity, verified.**
 
@@ -14,7 +12,7 @@ Connects an Android phone over USB, installs and updates its own signed companio
 ![Android](https://img.shields.io/badge/Android-7.0%2B-19E08B?style=flat-square&labelColor=0b0f14&logo=android&logoColor=19E08B)
 [![License](https://img.shields.io/badge/license-MIT-7B8CA1?style=flat-square&labelColor=0b0f14)](LICENSE)
 
-[**Download**](https://github.com/RealMrNovember/CiciPDA/releases/latest) · [Documentation](docs/DEVELOPMENT.md) · [☕ Buy me a coffee](https://buymeacoffee.com/MikeRoss)
+[**Download**](https://github.com/RealMrNovember/CiciPDA/releases/latest) · [cicibyte.com](https://cicibyte.com) · [Documentation](docs/DEVELOPMENT.md) · [☕ Buy me a coffee](https://buymeacoffee.com/MikeRoss)
 
 <br>
 
@@ -51,7 +49,7 @@ Connects an Android phone over USB, installs and updates its own signed companio
 
 ## Installation
 
-1. Download **`CiciPDA-Setup-<version>.exe`** from [Releases](https://github.com/RealMrNovember/CiciPDA/releases/latest) and run it. It installs to `C:\Program Files\CiciByte` with everything it needs (ADB, Wintun, the packet engine and the signed Android companion). There is no portable build.
+1. Download **`CiciPDA-<version>-windows-x64-Setup.exe`** from [Releases](https://github.com/RealMrNovember/CiciPDA/releases/latest) and run it. It installs to `C:\Program Files\CiciByte\CiciPDA` (the `CiciByte` folder is the vendor folder, `CiciPDA` is the application folder) with everything it needs (ADB, Wintun, the packet engine and the signed Android companion). There is no portable build.
 2. Start **CiciPDA** — it runs as administrator because the virtual adapter, routes and DNS need it.
 3. Connect your Android phone with a data cable and tap **Allow** on the *Allow USB debugging?* prompt.
 4. Press **Connect**. First time only: confirm the companion install on the phone if it asks, and allow notifications so its sharing notice is visible.
@@ -63,6 +61,17 @@ Settings, history and logs live per user in `%LocalAppData%\CiciByte\CiciPDA`. U
 ### Updates
 
 CiciPDA checks the signed release channel shortly after start and every six hours (toggle in **Settings**). When a new version exists an **Update** button appears; the installer is downloaded only from GitHub, verified against a signed SHA-256, and run after you confirm — your connection is closed and your network settings restored first. The Android companion is updated the same way (signed metadata → hash → pinned signer certificate → Android's own signature check).
+
+## Platform support
+
+| Platform | Status |
+| --- | --- |
+| **Windows 10 / 11 x64** | Supported (`CiciPDA-<version>-windows-x64-Setup.exe`) |
+| **Android 7.0+** | Companion app, installed and updated automatically from the Windows app |
+| **Linux** | Not available — the app depends on WPF, Wintun and `netsh` |
+| **macOS** | Not available — same reason |
+
+Release assets are named per platform so ports can be added later without renaming.
 
 ## Connection methods
 
@@ -83,8 +92,8 @@ Optional: **Wi-Fi sharing from the PC** through Windows Mobile Hotspot, bound to
 
 1. **Detect & authorize** — `adb devices`; USB-debugging consent is always the user's.
 2. **Prepare the companion** — verify the signed release, install or update the APK, open it once on first run.
-3. **Start the service** — a foreground service started over ADB; the pairing key travels through stdin, never a command line.
-4. **Tunnel** — AES-256-GCM frames, keys derived per connection and direction from the pairing key plus fresh randomness from both sides (no nonce reuse, no replay).
+3. **Start the service** — a foreground service started over ADB with a fresh per-connection session key (sent through adb's stdin, never a PC command line; Keystore-wrapped on the phone and deleted on disconnect).
+4. **Tunnel** — AES-256-GCM frames, keys derived per connection and direction from the session key plus fresh randomness from both sides (no nonce reuse, no replay).
 5. **Windows networking** — Wintun adapter, address, DNS, MTU, split default routes (`0.0.0.0/1` + `128.0.0.0/1`), IPv6 leak protection, a pinned route for the transport host to prevent loops.
 6. **Verify** — default route, DNS, HTTP, HTTPS and Windows connectivity status must pass before *Connected*; partial success is shown as *Limited Connectivity*.
 7. **Monitor & recover** — live counters, authenticated health polling, automatic reconnect, ordered rollback.
@@ -95,7 +104,7 @@ Details: [protocol and limits](docs/PROTOCOL.md) · [Android companion & OEM not
 
 - Connect · Live Monitor · Activity · Connection History · Devices · Network Diagnostics · Settings · Help
 - Real-time download/upload, session totals, latency, probe loss, uptime, phone signal and network type
-- 13 diagnostic tests with plain-language results and suggested fixes
+- 14 diagnostic tests with plain-language results and suggested fixes
 - Local, persistent connection history and a severity-tagged activity feed (secrets are masked)
 - Keyboard shortcuts: `Ctrl+1…8` pages, `Ctrl+Enter` connect/disconnect, `F5` refresh devices
 - English and Turkish interface, two themes
@@ -105,15 +114,15 @@ Details: [protocol and limits](docs/PROTOCOL.md) · [Android companion & OEM not
 - Signed companion APK; signer certificate **pinned** in the app; release metadata signed with an offline ECDSA key — a hash from the download server alone is never trusted.
 - Only standard primitives (AES-GCM, HMAC-SHA256, ECDSA P-256); no custom cryptography.
 - Relay and SOCKS listeners bind to `127.0.0.1` only; no inbound firewall openings are added.
-- Hotspot passphrases and the pairing key are protected with Windows DPAPI and masked in logs.
+- No long-lived pairing secret: every connection uses a fresh session key that is never written to the PC's disk, travels to the phone through adb's stdin, is wrapped by the Android Keystore on the phone, and is deleted on disconnect or "Unpair companion". The hotspot passphrase is protected with Windows DPAPI. Secrets are masked in logs. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 - All external commands use explicit argument lists. No registry networking changes, no TTL changes.
 - CiciPDA is for legitimate connectivity. It does **not** disguise traffic or evade carrier policies — use it with your own phone and within your plan's terms. The app sends no telemetry.
 
 ## Known limitations
 
-- Not a full layer-3 VPN and **not WireGuard**: TCP and UDP datagrams are relayed; ICMP (ping) is not carried; IP fragments are dropped. iPhone and hotspot-join modes are not encrypted by CiciPDA.
+- Not a full layer-3 VPN and **not WireGuard**: TCP and UDP datagrams are relayed (Windows DNS is ordinary UDP/53 sent through the phone to the DNS servers in Settings); ICMP (ping) is not carried; IP fragments are dropped. IPv6 is routed into the tunnel only when leak protection is on and works only if the phone's network has IPv6. iPhone and hotspot-join modes are not encrypted by CiciPDA.
 - Android may stop background apps on aggressive battery managers; CiciPDA detects it and reconnects. See the [OEM notes](docs/ANDROID_COMPANION.md).
-- Validation on physical phones is still in progress; the automated suite (75 tests, including a real Java relay over loopback) cannot replace it. See [what is and is not tested](docs/DEVELOPMENT.md).
+- **Nothing has been validated on a physical phone yet.** The automated suite (85 tests, including the real Java relay over loopback) cannot replace it; the checklist is in [docs/HARDWARE_TEST_PLAN.md](docs/HARDWARE_TEST_PLAN.md) and the honest status is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Build from source
 
@@ -134,7 +143,7 @@ Repository layout: `src/core` (all logic) · `src/app` (WPF UI) · `src/agent` (
 
 ## Türkçe özet
 
-CiciPDA, Android telefonunuzun internetini Windows bilgisayarınızda kullanmanızı sağlar. Kurulumdan sonra telefonu USB ile bağlayıp **USB hata ayıklamaya izin ver** dedikten sonra **Connect**'e basmanız yeterlidir; uygulama telefondaki imzalı yardımcı uygulamayı kendisi kurar/günceller, şifreli tüneli açar, Windows ağını yapılandırır ve DNS/HTTP/HTTPS gerçekten çalışmadan "Bağlı" göstermez. Kurulum `C:\Program Files\CiciByte` altına yapılır, güncellemeler imzalı sürüm kanalından otomatik denetlenir ve siz onaylayınca kurulur.
+CiciPDA, Android telefonunuzun internetini Windows bilgisayarınızda kullanmanızı sağlar. Kurulumdan sonra telefonu USB ile bağlayıp **USB hata ayıklamaya izin ver** dedikten sonra **Connect**'e basmanız yeterlidir; uygulama telefondaki imzalı yardımcı uygulamayı kendisi kurar/günceller, şifreli tüneli açar, Windows ağını yapılandırır ve DNS/HTTP/HTTPS gerçekten çalışmadan "Bağlı" göstermez. Kurulum `C:\Program Files\CiciByte\CiciPDA` altına yapılır, güncellemeler imzalı sürüm kanalından otomatik denetlenir ve siz onaylayınca kurulur.
 
 ## Support the project
 
@@ -142,4 +151,4 @@ CiciPDA, Android telefonunuzun internetini Windows bilgisayarınızda kullanman�
 
 ## Acknowledgements & licences
 
-Built on [Wintun](https://www.wintun.net), [tun2socks](https://github.com/xjasonlyu/tun2socks) and Google's Android Debug Bridge. CiciPDA's own code is MIT-licensed ([LICENSE](LICENSE)); bundled components keep their licences ([THIRD_PARTY.md](THIRD_PARTY.md)). CiciPDA is an independent project and is not affiliated with PdaNet. All trademarks belong to their owners.
+Built on [Wintun](https://www.wintun.net), [tun2socks](https://github.com/xjasonlyu/tun2socks) and Google's Android Debug Bridge. CiciPDA's own code is MIT-licensed ([LICENSE](LICENSE)); bundled components keep their licences ([THIRD_PARTY.md](THIRD_PARTY.md)). CiciPDA is developed by **CiciByte Technology, Inc.** ([cicibyte.com](https://cicibyte.com)) and is an independent project, not affiliated with PdaNet. All trademarks belong to their owners.

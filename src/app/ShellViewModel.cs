@@ -41,6 +41,7 @@ public sealed class DeviceRow
     public bool Preferred { get; init; }
     public ICommand? Forget { get; init; }
     public ICommand? Prefer { get; init; }
+    public ICommand? Unpair { get; init; }
 }
 
 public sealed class SessionRow
@@ -626,6 +627,12 @@ public sealed class ShellViewModel : Observable
                 Status = Orch.Device?.Serial == d.Serial && Orch.IsActive ? "In use" : "Connected", LastSeen = "now",
                 Preferred = Settings.Current.PreferredDeviceSerial == d.Serial,
                 Prefer = new RelayCommand(_ => { Settings.Current.PreferredDeviceSerial = d.Serial; Settings.Save(); RebuildDevices(); }),
+                Unpair = new RelayCommand(async _ =>
+                {
+                    if (!Dialogs.Confirm("Unpair companion", $"Make {d.DisplayName} forget this PC? The companion stops and deletes its stored key. Any active connection is closed. The next Connect pairs again automatically.", "Unpair", true)) return;
+                    await Orch.UnpairAsync(d.Serial);
+                    Notifier.Show(Severity.Success, "Companion pairing removed.");
+                }),
             });
         foreach (var k in Devices.Items.Where(k => Orch.Devices.All(d => d.Serial != k.Serial)))
             KnownRows.Add(new DeviceRow

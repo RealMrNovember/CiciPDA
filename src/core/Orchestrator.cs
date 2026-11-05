@@ -377,7 +377,7 @@ public sealed class Orchestrator
 
     async Task<AgentSession> StartCompanionServiceAsync(AdbDevice dev, CancellationToken ct)
     {
-        var key = CompanionManager.LoadOrCreatePairingKey();
+        var key = CompanionManager.NewSessionKey();
         int remote = System.Security.Cryptography.RandomNumberGenerator.GetInt32(20000, 60000);
         await _comp.StartServiceAsync(dev.Serial, key, remote, ct);
         var (local, json) = await _comp.WaitReadyAsync(dev.Serial, key, remote, ct);
@@ -424,16 +424,22 @@ public sealed class Orchestrator
     async Task VerifyAsync(int ifIndex, bool tunnel, CancellationToken ct)
     {
         var results = new List<CheckResult>();
+        results.Add(await Verifier.AdapterReady(ifIndex));        // local readiness (not evidence of internet access)
         results.Add(await Verifier.DefaultRoute(ifIndex));
         results.Add(await Verifier.Dns());
         var http = Verifier.Http(); var https = Verifier.Https();
         results.AddRange(await Task.WhenAll(http, https));
         ct.ThrowIfCancellationRequested();
-        results.Add(await Verifier.WindowsConnectivity(ifIndex));
+        results.Add(await Verifier.WindowsConnectivity(ifIndex));    // observed from Windows, never forced
+        results.Add(await Verifier.UdpDns(tunnel ? Cfg.DnsPrimary : "1.1.1.1"));
+        if (tunnel) results.Add(await Verifier.Ipv6(Cfg.Ipv6LeakProtection, _net?.Ipv6Protected ?? false));
         LastChecks = results;
         foreach (var r in results) Log.Write(r.Passed ? Severity.Success : (r.Required ? Severity.Error : Severity.Warning), "verify", $"{r.Title}: {(r.Passed ? "OK" : "FAILED")} — {r.Detail}");
         var req = results.Where(r => r.Required).ToList();
-        if (req.All(r => !r.Passed)) throw new InvalidOperationException("Connectivity check failed: " + req.First().Detail + " " + (req.First().Fix ?? ""));
+        // Local readiness (adapter, route) is NOT internet reachability: if DNS, HTTP and HTTPS all fail the connection is unusable
+        // no matter how healthy the adapter looks, so the attempt fails instead of showing a green adapter.
+        var inet = results.Where(r => r.Id is "dns" or "http" or "https").ToList();
+        if (inet.All(r => !r.Passed)) throw new InvalidOperationException("No internet access through this connection: " + inet[0].Detail + " " + (inet[0].Fix ?? ""));
         Internet = req.All(r => r.Passed) ? NetState.Reachable : NetState.Limited;
         if (!req.All(r => r.Passed)) Log.Warn("verify", "Only part of the data path works; state will be Limited Connectivity.");
     }
@@ -478,6 +484,14 @@ public sealed class Orchestrator
         _ = Task.Run(() => HealthLoop(_healthCts.Token));
     }
 
+    /// <summary>Explicit "forget this PC" on a phone: ends any session on it, then makes the companion delete its key.</summary>
+    public async Task UnpairAsync(string serial)
+    {
+        if (Device?.Serial == serial && (IsActive || IsBusy)) await DisconnectAsync();
+        await _comp.UnpairAsync(serial);
+        Log.Ok("companion", "Companion pairing removed on the phone: the stored session key and its Keystore wrapper were deleted.");
+    }
+
     // ---------- Wi-Fi sharing ----------
     public HotspotService Hotspot { get; } = new();
 
@@ -496,10 +510,10 @@ public sealed class Orchestrator
             Log.Warn("hotspot", "Wi-Fi sharing unavailable for the CiciPDA connection: " + chk.Detail + " Supported alternative: enable Internet Connection Sharing manually (CiciPDA adapter > Properties > Sharing) or connect the other device to a Wi-Fi network that routes through this PC.");
             Changed?.Invoke(); return;
         }
-        _journal.State.HotspotAdapter = guid; _journal.State.HotspotActive = true; _journal.Save();   // journal first: recovery must know even if we crash mid-start
+        _journal.State.HotspotAdapter = guid; _journal.State.HotspotSsid = Cfg.HotspotSsid; _journal.State.HotspotActive = true; _journal.Save();   // journal first: recovery must know even if we crash mid-start
         Changed?.Invoke();
         var ok = await Hotspot.StartAsync(guid, Cfg.HotspotSsid, pass, null, ct);
-        if (!ok) { _journal.State.HotspotActive = false; _journal.State.HotspotAdapter = null; _journal.Save(); }
+        if (!ok) { _journal.State.HotspotActive = false; _journal.State.HotspotAdapter = null; _journal.State.HotspotSsid = null; _journal.Save(); }
         else Log.Ok("hotspot", $"Wi-Fi hotspot \"{Cfg.HotspotSsid}\" is sharing the CiciPDA connection (profile \"{chk.Profile}\").");
         Changed?.Invoke();
     }
@@ -519,7 +533,7 @@ public sealed class Orchestrator
                 else if (_net is { IsRunning: false }) problem = "The packet engine (tun2socks) stopped.";
                 else
                 {
-                    try { var l = await _adb.ListDevicesAsync(ct); Devices = l; if (Device != null && !l.Any(d => d.Serial == Device.Serial && d.IsAuthorized)) problem = "The phone was disconnected."; } catch (OperationCanceledException) { return; } catch { }
+                    try { var l = await _adb.ListDevicesAsync(ct); Devices = l; if (Device != null && !l.Any(d => d.Serial == Device.Serial && d.IsAuthorized)) problem = l.Any(d => d.Serial == Device.Serial && d.State == "unauthorized") ? "USB debugging authorization was revoked on the phone." : "The phone was disconnected."; } catch (OperationCanceledException) { return; } catch { }
                 }
             }
             else if (_nativeIface?.Invoke() is not { OperationalStatus: OperationalStatus.Up }) problem = "The network interface went down.";
@@ -598,7 +612,7 @@ public sealed class Orchestrator
         var snap = Traffic;
         try { _monitor?.Dispose(); } catch { }
         _monitor = null; _nativeIface = null;
-        if (Hotspot.UpstreamGuid != null) { try { await Hotspot.StopAsync(); } catch (Exception ex) { Log.Warn("hotspot", ex.Message); } _journal.State.HotspotActive = false; _journal.State.HotspotAdapter = null; }
+        if (Hotspot.UpstreamGuid != null) { try { await Hotspot.StopAsync(); } catch (Exception ex) { Log.Warn("hotspot", ex.Message); } _journal.State.HotspotActive = false; _journal.State.HotspotAdapter = null; _journal.State.HotspotSsid = null; }
         try { if (_net != null) await _net.StopAsync(); } catch (Exception ex) { Log.Error("cleanup", ex, "Network cleanup"); }
         _net = null;
         try { _socks?.Dispose(); } catch { }

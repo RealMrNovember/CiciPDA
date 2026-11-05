@@ -5,7 +5,7 @@
 # Requires: Android SDK build-tools + platform, and a JDK (Android Studio JBR is used if present).
 # Signing: set CICI_KEYSTORE / CICI_KS_PASS / CICI_KS_ALIAS for a release build; otherwise a local DEV keystore is created
 # in ..\..\release (git-ignored). Dev-signed APKs must never be published.
-param([string]$VersionName = '2.0.0', [int]$VersionCode = 20000)
+param([string]$VersionName = '2.1.1', [int]$VersionCode = 20101)
 $ErrorActionPreference = 'Stop'
 $jbr = if (Test-Path 'C:\Program Files\Android\Android Studio\jbr') { 'C:\Program Files\Android\Android Studio\jbr' } else { $env:JAVA_HOME }
 $env:JAVA_HOME = $jbr

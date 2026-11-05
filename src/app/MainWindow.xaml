@@ -54,8 +54,15 @@
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="208"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
-                    <Border Width="26" Height="26" CornerRadius="7" Background="{DynamicResource AccentGradient}">
-                        <Path Style="{StaticResource Ico}" Data="{StaticResource IconConnect}" Stroke="{DynamicResource OnAccent}" Width="15" Height="15" StrokeThickness="2.2"/>
+                    <Border Width="28" Height="28" CornerRadius="8" Background="#0B1117" BorderBrush="{DynamicResource BorderHi}" BorderThickness="1">
+                        <Viewbox Margin="3">
+                            <Canvas Width="256" Height="256">
+                                <Path Stroke="{DynamicResource AccentGradient}" StrokeThickness="16" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M186.19 76.28A84 84 0 1 0 186.19 179.72"/>
+                                <Path Stroke="{DynamicResource AccentGradient}" StrokeThickness="16" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity=".8" Data="M164.13 93.52A56 56 0 1 0 164.13 162.48"/>
+                                <Path Stroke="{DynamicResource AccentGradient}" StrokeThickness="16" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity=".6" Data="M142.06 110.76A28 28 0 1 0 142.06 145.24"/>
+                                <Ellipse Canvas.Left="108" Canvas.Top="116" Width="24" Height="24" Fill="{DynamicResource Green}"/>
+                            </Canvas>
+                        </Viewbox>
                     </Border>
                     <TextBlock Text="CiciPDA" FontSize="16" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
@@ -409,6 +416,7 @@
                                             <StackPanel Grid.Column="4" Orientation="Horizontal">
                                                 <TextBlock Text="Preferred" Foreground="{DynamicResource Green}" VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12" Visibility="{Binding Preferred, Converter={StaticResource BoolVis}}"/>
                                                 <Button Content="Set as preferred" Command="{Binding Prefer}" Visibility="{Binding Preferred, Converter={StaticResource InvBoolVis}}"/>
+                                                <Button Content="Unpair companion" Command="{Binding Unpair}" Style="{StaticResource Danger}" Margin="8,0,0,0" Visibility="{Binding Trusted, Converter={StaticResource BoolVis}}"/>
                                             </StackPanel>
                                         </Grid>
                                     </Border>
@@ -557,12 +565,14 @@
                             <StackPanel>
                                 <TextBlock Text="ABOUT" Style="{StaticResource SectionTitle}"/>
                                 <TextBlock Margin="0,8,0,0" Text="{Binding CurrentVersionText, StringFormat='CiciPDA {0} — built on Wintun, tun2socks and Android Debug Bridge.'}" Style="{StaticResource MutedText}"/>
+                                <TextBlock Margin="0,4,0,0" Text="© 2026 CiciByte Technology, Inc. · cicibyte.com" Style="{StaticResource MutedText}" FontSize="12"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                     <Button Content="Check for updates" Command="{Binding CheckUpdates}" Margin="0,0,8,0"/>
                                     <Button Content="Install update" Command="{Binding InstallUpdate}" Style="{StaticResource Primary}" Margin="0,0,8,0" Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVis}}"/>
                                 </StackPanel>
                                 <TextBlock Text="{Binding UpdateStatus}" Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button Content="cicibyte.com" Command="{Binding OpenLink}" CommandParameter="https://cicibyte.com" Margin="0,0,8,0"/>
                                     <Button Content="GitHub" Command="{Binding OpenLink}" CommandParameter="https://github.com/RealMrNovember/CiciPDA" Margin="0,0,8,0"/>
                                     <Button Content="Buy me a coffee" Command="{Binding OpenLink}" CommandParameter="https://buymeacoffee.com/MikeRoss" Margin="0,0,8,0"/>
                                     <Button Content="Open data folder" Command="{Binding OpenData}"/>

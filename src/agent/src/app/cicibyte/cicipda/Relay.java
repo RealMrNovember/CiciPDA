@@ -35,10 +35,12 @@ public final class Relay {
     public final AtomicLong activeConns = new AtomicLong(), totalConns = new AtomicLong(), failedConns = new AtomicLong();
     public final AtomicLong bytesUp = new AtomicLong(), bytesDown = new AtomicLong(), udpDatagrams = new AtomicLong();
     final long started = System.currentTimeMillis();
+    /** Time of the last connection that proved knowledge of the key (used by the service watchdog). */
+    public volatile long lastAuthenticated = System.currentTimeMillis();
     final String version;
     final StatusProvider provider;
 
-    public Relay(byte[] key, String version, StatusProvider provider) { this.key = key; this.version = version; this.provider = provider; }
+    public Relay(byte[] key, String version, StatusProvider provider) { this.key = key.clone(); this.version = version; this.provider = provider; }
 
     public int start(int port) throws IOException {
         server = new ServerSocket(port, 64, InetAddress.getByName("127.0.0.1"));
@@ -122,6 +124,7 @@ public final class Relay {
             c.setSoTimeout(10000);
             final Chan ch = new Chan(c);
             String cmd = new String(ch.recv(), "UTF-8");
+            lastAuthenticated = System.currentTimeMillis();
             c.setSoTimeout(0);
             if (cmd.equals("S")) { byte[] j = statusJson().getBytes("UTF-8"); ch.send(j, 0, j.length); return; }
             if (cmd.equals("U")) { udp(c, ch); return; }

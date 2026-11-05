@@ -210,7 +210,7 @@ public class Ipv6RelayTests : IClassFixture<AgentFixture>
     [Fact]
     public async Task Service_RestartWithSameKey_AcceptsNewConnections()
     {
-        // The companion keeps its pairing key across stop/start; a new relay with the same key must authenticate with the same client.
+        // A restarted relay (system restart of the sticky service) resumes with the session key it stored; the same client must authenticate again.
         var key = _a.Key;
         using var fixture2 = new AgentFixtureWithKey(key);
         if (!fixture2.Available) return;
