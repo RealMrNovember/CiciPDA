@@ -55,3 +55,7 @@ The step-by-step plan is `HARDWARE_TEST_PLAN.md`.
 * iPhone and Android-hotspot-join modes use Windows' own connection (no tunnel, no CiciPDA encryption); Wi-Fi sharing is offered only for the tunnel methods.
 * Android may stop the foreground service on aggressive battery managers; the PC reconnects with a new key.
 * No Authenticode signature yet; Linux and macOS builds do not exist.
+
+## Defects found after 2.1.1 shipped (fixed in 2.1.2)
+* **First run after install failed with "CreateProcess failed; code 740".** The installer flags `CiciPDA.exe` to run as administrator, but the post-install launch used plain `CreateProcess`, which refuses elevated-flagged executables. The earlier validation ran the installer with `/VERYSILENT`, which never launches the app, so it could not catch this. Fix: the launch entry now uses `shellexec` (UAC prompt, then the app starts) and also relaunches the app after a silent in-app update. Reproduced the 740 behaviour locally; `validate-release.ps1` now asserts the `shellexec` flag. **The interactive UAC-then-start sequence itself has not been executed by automation (it needs a UAC click).**
+* **No desktop shortcut:** the shortcut task was optional and unchecked. It is now checked by default; validation installs, checks the shortcut and its target, and checks the uninstaller removes it.

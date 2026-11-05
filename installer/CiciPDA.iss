@@ -1,7 +1,7 @@
 ; Inno Setup 6 script. Built by installer\build-installer.ps1 (needs ISCC.exe; NOT verified on this machine - Inno Setup is not installed).
 #define AppName "CiciPDA"
 #ifndef AppVersion
-  #define AppVersion "2.1.1"
+  #define AppVersion "2.1.2"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\artifacts\publish"
@@ -48,11 +48,25 @@ Name: "{group}\{#AppName}"; Filename: "{app}\CiciPDA.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\CiciPDA.exe"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
 
 [Registry]
 ; The virtual adapter, routes and DNS need administrator rights; ask for them at launch instead of making the user find a setting.
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers"; ValueType: string; ValueName: "{app}\CiciPDA.exe"; ValueData: "~ RUNASADMIN"; Flags: uninsdeletevalue; Check: IsAdminInstallMode
 
 [Run]
-Filename: "{app}\CiciPDA.exe"; Description: "Launch CiciPDA"; Flags: nowait postinstall skipifsilent
+; CiciPDA.exe is flagged to run as administrator, which plain CreateProcess refuses (error 740). shellexec goes through ShellExecute,
+; which shows the UAC prompt and then starts the app. It also relaunches the app after a silent in-app update (/SILENT);
+; fully silent runs (/VERYSILENT, used by automated validation) never launch it.
+Filename: "{app}\CiciPDA.exe"; Description: "Launch CiciPDA"; Flags: nowait postinstall shellexec; Check: NotVerySilent
+
+[Code]
+// True unless the installer was started with /VERYSILENT (automated validation). An in-app update runs with /SILENT and does relaunch the app.
+function NotVerySilent: Boolean;
+var
+  i: Integer;
+begin
+  Result := True;
+  for i := 1 to ParamCount do
+    if CompareText(ParamStr(i), '/VERYSILENT') = 0 then Result := False;
+end;
