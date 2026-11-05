@@ -8,6 +8,16 @@ namespace CiciPDA;
 public enum ConnState { Offline, DetectingDevice, DeviceConnected, EstablishingTunnel, Connecting, Connected, Reconnecting, Disconnecting, Error, Limited }
 public enum PathState { Down, Starting, Up, Failed }
 public enum NetState { Unknown, Reachable, Limited, Unreachable }
+public enum StageState { Pending, Active, Done, Warn, Failed, Skipped }
+
+public sealed class StageInfo
+{
+    public string Id { get; init; } = ""; public string Title { get; init; } = "";
+    public StageState State { get; set; } = StageState.Pending; public string Detail { get; set; } = "";
+}
+
+/// <summary>The independent facts the UI must never merge into one "Connected" light.</summary>
+public sealed record Indicators(bool DeviceConnected, bool CompanionInstalled, bool CompanionRunning, bool TunnelConnected, bool NetworkConfigured, bool InternetVerified);
 
 public sealed class TrafficSnapshot
 {
@@ -133,6 +143,7 @@ public sealed class Orchestrator
     readonly DeviceStore _devices;
     readonly HistoryStore _history;
     readonly RecoveryJournal _journal;
+    readonly CompanionManager _comp;
     readonly SemaphoreSlim _gate = new(1, 1);
     CancellationTokenSource? _opCts, _healthCts;
     AgentSession? _agent;
@@ -165,8 +176,37 @@ public sealed class Orchestrator
     public event Action? Changed;
     public event Action<TrafficSnapshot>? TrafficUpdated;
 
-    public Orchestrator(SettingsStore s, AdbService adb, DeviceStore d, HistoryStore h, RecoveryJournal j)
-    { _settings = s; _adb = adb; _devices = d; _history = h; _journal = j; _adb.Locate(); }
+    public Orchestrator(SettingsStore s, AdbService adb, DeviceStore d, HistoryStore h, RecoveryJournal j, CompanionManager comp)
+    { _settings = s; _adb = adb; _devices = d; _history = h; _journal = j; _comp = comp; _adb.Locate(); ResetStages(); }
+
+    // ---------- pipeline stages ----------
+    public IReadOnlyList<StageInfo> Stages { get; private set; } = Array.Empty<StageInfo>();
+    public CompanionInspection? CompanionInfo { get; private set; }
+    public string PhoneNetwork { get; private set; } = "";
+    public bool CompanionInstalled { get; private set; }
+    public bool CompanionRunning => _agent is { IsAlive: true } && Stages.FirstOrDefault(x => x.Id == "service")?.State == StageState.Done;
+    public Indicators Indicators => new(Device != null && Device.IsAuthorized || (Method is ConnectionMethod.AndroidHotspot or ConnectionMethod.IphoneHotspot && IsActive),
+        CompanionInstalled, CompanionRunning, Vpn == PathState.Up, Stages.FirstOrDefault(x => x.Id == "network")?.State == StageState.Done, Internet == NetState.Reachable);
+
+    void ResetStages()
+    {
+        Stages = new List<StageInfo>
+        {
+            new() { Id = "detect", Title = "Detect phone" }, new() { Id = "authorize", Title = "Check USB debugging authorization" },
+            new() { Id = "companion", Title = "Check Android companion" }, new() { Id = "install", Title = "Install / update companion" },
+            new() { Id = "service", Title = "Start companion service" }, new() { Id = "tunnel", Title = "Establish secure tunnel" },
+            new() { Id = "adapter", Title = "Create virtual adapter" }, new() { Id = "network", Title = "Configure routes and DNS" },
+            new() { Id = "internet", Title = "Verify internet access" },
+        };
+        CompanionInfo = null; CompanionInstalled = false; PhoneNetwork = "";
+    }
+
+    void Step(string id, StageState st, string detail = "")
+    {
+        var x = Stages.First(y => y.Id == id); x.State = st; x.Detail = detail;
+        if (st == StageState.Failed) Log.Error("stage", $"{x.Title}: {detail}"); else if (st != StageState.Active) Log.Info("stage", $"{x.Title}: {st}{(detail.Length > 0 ? " — " + detail : "")}");
+        Changed?.Invoke();
+    }
 
     AppSettings Cfg => _settings.Current;
 
@@ -228,7 +268,7 @@ public sealed class Orchestrator
         var ct = _opCts.Token;
         Method = method; LastError = null; NeedsElevation = false; LastChecks = Array.Empty<CheckResult>();
         Vpn = PathState.Down; Internet = NetState.Unknown; InterfaceName = ""; Device = null; DeviceName = "";
-        _session = null;
+        _session = null; ResetStages();
         try
         {
             Set(isReconnect ? ConnState.Reconnecting : ConnState.DetectingDevice, "Looking for your phone");
@@ -248,53 +288,125 @@ public sealed class Orchestrator
     async Task ConnectTunnelAsync(ConnectionMethod method, string? serial, CancellationToken ct)
     {
         if (!WinNet.IsElevated()) { NeedsElevation = true; throw new InvalidOperationException("Administrator rights are required to create the virtual adapter and change routes."); }
-        if (_adb.AdbPath == null && _adb.Locate() == null) throw new FileNotFoundException("adb.exe was not found. Set its location in Settings.");
+        if (_adb.AdbPath == null && _adb.Locate() == null) throw new FileNotFoundException("adb.exe was not found. Reinstall CiciPDA or set its location in Settings.");
 
+        Step("detect", StageState.Active, "Looking for your phone");
         await RefreshDevicesAsync(ct);
         var dev = PickDevice(method, serial);
         if (dev == null)
         {
+            Step("detect", Devices.Count > 0 ? StageState.Done : StageState.Failed, Devices.Count > 0 ? "Phone seen, not authorized" : "No phone found");
             var unauth = Devices.FirstOrDefault(d => d.State == "unauthorized");
-            if (unauth != null) throw new InvalidOperationException("The phone has not authorized this computer. Unlock the phone and tap Allow on the USB debugging prompt.");
+            if (unauth != null) { Step("authorize", StageState.Failed, "Waiting for you to tap Allow on the phone"); throw new InvalidOperationException("The phone has not authorized this computer. Unlock the phone and tap Allow on the 'Allow USB debugging?' prompt (tick Always allow), then press Connect again."); }
             if (Devices.Any(d => d.State == "offline")) throw new InvalidOperationException("The phone is shown as offline. Reconnect the cable or restart ADB from the Devices page.");
-            throw new InvalidOperationException(method == ConnectionMethod.Usb ? "No USB device found. Connect a data cable and enable USB debugging." : "No authorized Android device found. Enable USB debugging and connect the phone.");
+            throw new InvalidOperationException(method == ConnectionMethod.Usb ? "No USB device found. Connect a data cable and enable USB debugging (Settings > Developer options)." : "No authorized Android device found. Enable USB debugging and connect the phone.");
         }
         Device = dev; DeviceName = dev.DisplayName;
+        Step("detect", StageState.Done, $"{dev.DisplayName} ({dev.TransportName})");
+        Step("authorize", StageState.Done, "USB debugging authorized");
         _devices.CountConnection(dev.Serial);
-        Log.Ok("device", $"Using {dev.DisplayName} over {dev.TransportName}.");
         Set(ConnState.DeviceConnected, DeviceName);
         _session = new SessionRecord { Start = DateTimeOffset.Now, Method = method, Device = dev.DisplayName };
 
-        Set(ConnState.EstablishingTunnel, "Starting the phone helper");
+        Set(ConnState.EstablishingTunnel, "Preparing the phone");
         Vpn = PathState.Starting;
-        _agent = await _adb.StartAgentAsync(dev.Serial, ct);
-        _journal.State.AdbSerial = dev.Serial; _journal.State.ForwardPort = _agent.LocalPort; _journal.Save();
-        Log.Ok("agent", $"Phone helper running; encrypted channel on local port {_agent.LocalPort}.");
+        if (Cfg.UseCompanion) await PrepareCompanionAsync(dev, ct);
+        else { Step("companion", StageState.Skipped, "Companion disabled in Settings"); Step("install", StageState.Skipped); }
 
-        // Prove the phone-side data path before touching Windows networking.
+        Step("service", StageState.Active, "Starting the phone service");
+        try
+        {
+            _agent = Cfg.UseCompanion ? await StartCompanionServiceAsync(dev, ct) : await _adb.StartAgentAsync(dev.Serial, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException && Cfg.UseCompanion && Cfg.AllowLegacyFallback)
+        {
+            Log.Warn("companion", "Companion unavailable (" + ex.Message + "); using the no-install shell helper.");
+            _agent = await _adb.StartAgentAsync(dev.Serial, ct);
+        }
+        _journal.State.AdbSerial = dev.Serial; _journal.State.ForwardPort = _agent.LocalPort; _journal.Save();
+        Step("service", StageState.Done, _agent.IsCompanion ? "Companion service running" : "Shell helper running");
+
+        Step("tunnel", StageState.Active, "Testing the phone's internet path");
         var sw = Stopwatch.StartNew();
         using (await AgentChannel.ConnectAsync(_agent.LocalPort, _agent.Key, "1.1.1.1", 443, ct, TimeSpan.FromSeconds(15))) { }
-        Log.Ok("agent", $"Phone can reach the internet (probe {sw.ElapsedMilliseconds} ms).");
+        Step("tunnel", StageState.Done, $"Encrypted channel up; phone reached the internet in {sw.ElapsedMilliseconds} ms");
 
         _socks = new SocksRelay(_agent.LocalPort, _agent.Key);
         _socks.Start();
 
         Set(ConnState.Connecting, "Creating virtual adapter");
+        Step("adapter", StageState.Active);
         _net = new TunnelNetwork(_journal);
-        await _net.StartAsync(_socks.Port, Cfg, dev.WifiAddress, ct);
+        await _net.StartAsync(_socks.Port, Cfg, dev.WifiAddress, ct, onAdapter: () => Step("adapter", StageState.Done, "Wintun adapter up"));
+        Step("network", StageState.Done, "Routes, DNS and MTU configured");
         InterfaceName = TunnelNetwork.AdapterName;
         Vpn = PathState.Up;
 
         Set(ConnState.Connecting, "Verifying connectivity");
+        Step("internet", StageState.Active, "Checking route, DNS, HTTP, HTTPS");
         await VerifyAsync(_net.IfIndex, tunnel: true, ct);
+        Step("internet", Internet == NetState.Reachable ? StageState.Done : StageState.Warn, Internet == NetState.Reachable ? "Verified" : "Partial");
         StartMonitoring(tunnel: true);
         await FinishConnectAsync(ct);
     }
 
+    async Task PrepareCompanionAsync(AdbDevice dev, CancellationToken ct)
+    {
+        Step("companion", StageState.Active, "Verifying the trusted companion release");
+        var release = _comp.LoadBestRelease();
+        if (Cfg.AutoUpdateCompanion)
+        {
+            try { var up = await _comp.DownloadUpdateAsync(release.Meta.VersionCode, ct); if (up != null) release = up; }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { Log.Info("companion", "No update applied: " + ex.Message); }
+        }
+        var info = await _comp.InspectAsync(dev.Serial, release, ct);
+        CompanionInfo = info; CompanionInstalled = info.Installed;
+        Step("companion", StageState.Done, info.Installed ? $"Installed {info.InstalledName} ({info.Status}); Android {info.AndroidVersion}" : $"Not installed; Android {info.AndroidVersion}");
+        if (info.Status is CompanionStatus.UpToDate or CompanionStatus.NewerThanBundled) { Step("install", StageState.Skipped, "Already up to date"); return; }
+
+        Step("install", StageState.Active, (info.Installed ? "Updating to " : "Installing ") + release.Meta.VersionName + " - confirm on the phone if it asks");
+        var r = await _comp.InstallAsync(dev.Serial, release, ct);
+        if (!r.Ok) { Step("install", StageState.Failed, r.Message); throw new InvalidOperationException(r.Message); }
+        CompanionInstalled = true;
+        Step("install", StageState.Done, release.Meta.VersionName + " installed");
+        if (!info.Installed) await _comp.ShowOnPhoneAsync(dev.Serial, ct);   // first run: lets the user read what it does and allow notifications
+        if (info.Sdk >= 33 && !info.NotificationsGranted)
+            Log.Warn("companion", "Notifications are not allowed for the companion yet. It still works, but open it on the phone and tap Allow notifications so its sharing notice is visible.");
+    }
+
+    async Task<AgentSession> StartCompanionServiceAsync(AdbDevice dev, CancellationToken ct)
+    {
+        var key = CompanionManager.LoadOrCreatePairingKey();
+        int remote = System.Security.Cryptography.RandomNumberGenerator.GetInt32(20000, 60000);
+        await _comp.StartServiceAsync(dev.Serial, key, remote, ct);
+        var (local, json) = await _comp.WaitReadyAsync(dev.Serial, key, remote, ct);
+        using (var doc = System.Text.Json.JsonDocument.Parse(json))
+        {
+            var root = doc.RootElement;
+            if (root.GetProperty("protocol").GetInt32() != AgentChannel.Protocol) throw new InvalidOperationException("The phone companion speaks a different protocol version. Update CiciPDA or the companion.");
+            PhoneNetwork = DescribePhoneNetwork(root);
+            Log.Ok("companion", $"Companion {root.GetProperty("version").GetString()} ready. Phone network: {PhoneNetwork}");
+            if (root.TryGetProperty("network", out var n) && n.TryGetProperty("validated", out var v) && !v.GetBoolean())
+                Log.Warn("companion", "The phone reports no validated internet connection. Check its mobile data or Wi-Fi.");
+        }
+        var adb = _adb.AdbPath!; var serial = dev.Serial;
+        return new AgentSession { Serial = serial, LocalPort = local, RemotePort = remote, Key = key, AdbPath = adb, IsCompanion = true, PhoneStatusJson = json, OnStop = () => { _ = _comp.StopServiceAsync(serial); } };
+    }
+
+    static string DescribePhoneNetwork(System.Text.Json.JsonElement root)
+    {
+        if (!root.TryGetProperty("network", out var n)) return "unknown";
+        return $"{n.GetProperty("transport").GetString()}{(n.GetProperty("vpn").GetBoolean() ? " + VPN" : "")}, {(n.GetProperty("validated").GetBoolean() ? "validated" : "not validated")}{(n.GetProperty("metered").GetBoolean() ? ", metered" : "")}";
+    }
+
     async Task ConnectNativeAsync(ConnectionMethod method, CancellationToken ct)
     {
+        foreach (var id in new[] { "authorize", "companion", "install", "service", "tunnel", "adapter", "network" }) Step(id, StageState.Skipped, "Not used for this method");
+        Step("detect", StageState.Active, "Looking for the phone hotspot");
         var (ni, label) = method == ConnectionMethod.AndroidHotspot ? await FindWifiHotspotAsync() : await FindIphoneAsync();
         if (ni == null) throw new InvalidOperationException(label);
+        Step("detect", StageState.Done, label);
         DeviceName = label; InterfaceName = ni.Name; Device = null;
         _session = new SessionRecord { Start = DateTimeOffset.Now, Method = method, Device = label, Interface = ni.Name };
         string name = ni.Name;
@@ -302,7 +414,9 @@ public sealed class Orchestrator
         Log.Ok("device", $"Using {label} on interface {ni.Name}.");
         Set(ConnState.Connecting, "Verifying connectivity");
         Vpn = PathState.Down;
+        Step("internet", StageState.Active);
         await VerifyAsync(WinNet.IndexOf(ni), tunnel: false, ct);
+        Step("internet", Internet == NetState.Reachable ? StageState.Done : StageState.Warn);
         StartMonitoring(tunnel: false);
         await FinishConnectAsync(ct);
     }
@@ -382,6 +496,7 @@ public sealed class Orchestrator
             if (Method is ConnectionMethod.PhoneVpn or ConnectionMethod.Usb)
             {
                 if (_agent is { IsAlive: false }) problem = "The phone helper stopped.";
+                else if (_agent is { IsCompanion: true } ag && await CompanionPollFailedAsync(ag, ct)) problem = "The phone companion stopped responding (it may have been closed or restricted by the phone's battery settings).";
                 else if (_net is { IsRunning: false }) problem = "The packet engine (tun2socks) stopped.";
                 else
                 {
@@ -398,6 +513,21 @@ public sealed class Orchestrator
             _ = Task.Run(() => HandleInterruptionAsync(problem));
             return;
         }
+    }
+
+    /// <summary>Authenticated health poll of the companion; also refreshes the phone's network description. True when it did not answer.</summary>
+    async Task<bool> CompanionPollFailedAsync(AgentSession ag, CancellationToken ct)
+    {
+        try
+        {
+            var json = await AgentChannel.GetStatusAsync(ag.LocalPort, ag.Key, ct, TimeSpan.FromSeconds(4));
+            ag.PhoneStatusJson = json;
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            PhoneNetwork = DescribePhoneNetwork(doc.RootElement);
+            return false;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (AgentConnectException) { return true; }
     }
 
     async Task HandleInterruptionAsync(string reason)

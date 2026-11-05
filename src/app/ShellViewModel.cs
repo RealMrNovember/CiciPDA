@@ -70,6 +70,23 @@ public sealed class MethodOption : Observable
     public string Note { get => _note; set => Set(ref _note, value); }
 }
 
+public sealed class StageRow : Observable
+{
+    string _title = "", _detail = ""; ItemState _state; bool _active, _skipped;
+    public string Title { get => _title; set => Set(ref _title, value); }
+    public string Detail { get => _detail; set => Set(ref _detail, value); }
+    public ItemState State { get => _state; set => Set(ref _state, value); }
+    public bool Active { get => _active; set => Set(ref _active, value); }
+    public bool Skipped { get => _skipped; set => Set(ref _skipped, value); }
+}
+
+public sealed class IndicatorRow : Observable
+{
+    bool _on; public string Title { get; init; } = "";
+    public bool On { get => _on; set { if (Set(ref _on, value)) Raise(nameof(State)); } }
+    public ItemState State => _on ? ItemState.Ok : ItemState.Pending;
+}
+
 public sealed class ToastRow { public Severity Severity { get; init; } public string Text { get; init; } = ""; }
 
 public sealed class ShellViewModel : Observable
@@ -142,6 +159,16 @@ public sealed class ShellViewModel : Observable
     // ---- collections ----
     public ObservableCollection<MethodOption> Methods { get; } = new();
     public ObservableCollection<ChecklistItem> Checklist { get; } = new();
+    public ObservableCollection<StageRow> Stages { get; } = new();
+    public ObservableCollection<IndicatorRow> Indicators { get; } = new()
+    {
+        new IndicatorRow { Title = "Device connected" }, new IndicatorRow { Title = "Companion installed" }, new IndicatorRow { Title = "Companion running" },
+        new IndicatorRow { Title = "Tunnel connected" }, new IndicatorRow { Title = "Windows network configured" }, new IndicatorRow { Title = "Internet verified" },
+    };
+    public string PhoneNetworkText { get => _pn; private set => Set(ref _pn, value); }
+    string _pn = "—";
+    public bool ShowStages { get => _showStages; private set => Set(ref _showStages, value); }
+    bool _showStages;
     public ObservableCollection<ActivityEvent> Events { get; } = new();
     public ObservableCollection<DeviceRow> DeviceRows { get; } = new();
     public ObservableCollection<DeviceRow> KnownRows { get; } = new();
@@ -410,6 +437,7 @@ public sealed class ShellViewModel : Observable
         ShowAdminBanner = !IsElevated && Settings.Current.LastMethod is ConnectionMethod.PhoneVpn or ConnectionMethod.Usb;
         Raise(nameof(CanChangeMethod)); Raise(nameof(IsActive)); Raise(nameof(IsBusy));
         foreach (var m in Methods) m.Selected = m.Method == Settings.Current.LastMethod;
+        SyncStages();
         UpdateAvailability();
         Raise(nameof(GlobalNet)); Raise(nameof(GlobalVpn)); Raise(nameof(GlobalType)); Raise(nameof(GlobalUsage));
     }
@@ -426,6 +454,23 @@ public sealed class ShellViewModel : Observable
         for (int i = 0; i < 120; i++) { d[i] = 2e6 + 2.5e6 * Math.Abs(Math.Sin(i / 9.0)) + rnd.NextDouble() * 6e5; u[i] = 2e5 + 3e5 * Math.Abs(Math.Sin(i / 6.0 + 1)) + rnd.NextDouble() * 8e4; }
         DownHistory = d; UpHistory = u; ClockText = "14:32:07";
         foreach (var m in Methods) { m.Selected = m.Method == ConnectionMethod.PhoneVpn; m.Availability = m.Method <= ConnectionMethod.Usb ? "Device ready" : "Not detected"; m.AvailState = m.Method <= ConnectionMethod.Usb ? ItemState.Ok : ItemState.Warn; }
+    }
+
+    void SyncStages()
+    {
+        var st = Orch.Stages;
+        while (Stages.Count < st.Count) Stages.Add(new StageRow());
+        for (int i = 0; i < st.Count; i++)
+        {
+            var r = Stages[i]; var x = st[i];
+            r.Title = x.Title; r.Detail = x.Detail; r.Active = x.State == StageState.Active; r.Skipped = x.State == StageState.Skipped;
+            r.State = x.State switch { StageState.Done => ItemState.Ok, StageState.Warn => ItemState.Warn, StageState.Failed => ItemState.Fail, _ => ItemState.Pending };
+        }
+        var ind = Orch.Indicators;
+        Indicators[0].On = ind.DeviceConnected; Indicators[1].On = ind.CompanionInstalled; Indicators[2].On = ind.CompanionRunning;
+        Indicators[3].On = ind.TunnelConnected; Indicators[4].On = ind.NetworkConfigured; Indicators[5].On = ind.InternetVerified;
+        PhoneNetworkText = string.IsNullOrEmpty(Orch.PhoneNetwork) ? "—" : Orch.PhoneNetwork;
+        ShowStages = Orch.IsBusy || Orch.IsActive || Orch.State == ConnState.Error;
     }
 
     public bool IsActive => Orch.IsActive;

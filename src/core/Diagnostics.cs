@@ -7,7 +7,8 @@ public sealed class DiagnosticsService
 {
     readonly AdbService _adb;
     readonly Orchestrator _orch;
-    public DiagnosticsService(AdbService adb, Orchestrator orch) { _adb = adb; _orch = orch; }
+    readonly CompanionManager _comp;
+    public DiagnosticsService(AdbService adb, Orchestrator orch, CompanionManager comp) { _adb = adb; _orch = orch; _comp = comp; }
 
     public static readonly (string id, string title)[] Tests =
     {
@@ -15,6 +16,7 @@ public sealed class DiagnosticsService
         ("tools", "Bundled tools (adb, Wintun, tun2socks, helper)"),
         ("device", "Device detection"),
         ("adb", "USB / ADB authorization"),
+        ("companion", "Android companion (trusted release and install state)"),
         ("handshake", "Phone helper handshake"),
         ("adapter", "Virtual adapter"),
         ("route", "Default route"),
@@ -71,11 +73,24 @@ public sealed class DiagnosticsService
                 return bad == null ? Ok(id, t, "All detected devices are authorized.")
                     : Bad(id, t, $"{bad.Serial} is {bad.State}.", bad.State == "unauthorized" ? "Unlock the phone and tap Allow on the USB debugging prompt (tick Always allow)." : "Reconnect the cable or restart ADB from the Devices page.");
             }
+            case "companion":
+            {
+                VerifiedCompanion rel;
+                try { rel = _comp.LoadBestRelease(); }
+                catch (TrustException ex) { return Bad(id, t, ex.Message, "Reinstall CiciPDA; the bundled companion failed verification."); }
+                var note = ReleaseTrust.IsDevelopmentTrust ? " (development trust keys)" : "";
+                var dev = _orch.Devices.FirstOrDefault(d => d.IsAuthorized);
+                if (dev == null) return Ok(id, t, $"Release {rel.Meta.VersionName} ({rel.Source}) verified: signature, hash and signer certificate{note}. No phone to inspect.");
+                var info = await _comp.InspectAsync(dev.Serial, rel, ct);
+                return info.Status is CompanionStatus.UpToDate or CompanionStatus.NewerThanBundled
+                    ? Ok(id, t, $"Release {rel.Meta.VersionName} verified{note}; phone has {info.InstalledName}.")
+                    : Bad(id, t, $"Release {rel.Meta.VersionName} verified{note}; phone status: {info.Status}.", "It is installed or updated automatically when you press Connect.");
+            }
             case "handshake":
             {
                 var dev = _orch.Devices.FirstOrDefault(d => d.IsAuthorized);
                 if (dev == null) return Bad(id, t, "No authorized device.", "Connect and authorize the phone first.");
-                using var agent = await _adb.StartAgentAsync(dev.Serial, ct);
+                using var agent = await _adb.StartAgentAsync(dev.Serial, ct);   // shell helper: tests the channel without touching the phone app
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 using (await AgentChannel.ConnectAsync(agent.LocalPort, agent.Key, "1.1.1.1", 443, ct, TimeSpan.FromSeconds(12))) { }
                 return Ok(id, t, $"Encrypted channel works; the phone reached 1.1.1.1 in {sw.ElapsedMilliseconds} ms.");

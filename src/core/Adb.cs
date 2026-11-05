@@ -31,15 +31,19 @@ public sealed class AgentSession : IDisposable
     public int LocalPort { get; init; }
     public int RemotePort { get; init; }
     public byte[] Key { get; init; } = Array.Empty<byte>();
-    public ManagedProcess Process { get; init; } = null!;
+    public ManagedProcess? Process { get; init; }          // legacy app_process launcher only
     public string AdbPath { get; init; } = "";
-    public bool IsAlive => !Process.HasExited;
+    public bool IsCompanion { get; init; }
+    public string PhoneStatusJson { get; set; } = "";
+    public Action? OnStop { get; init; }                    // companion: stop the foreground service
+    public bool IsAlive => Process == null || !Process.HasExited;
 
     public void Dispose()
     {
         // Closing stdin makes the agent exit; kill adb as well, then drop our forward.
-        Process.Kill();
-        try { Process.Dispose(); } catch { }
+        try { OnStop?.Invoke(); } catch { }
+        Process?.Kill();
+        try { Process?.Dispose(); } catch { }
         try { CryptographicOperations.ZeroMemory(Key); } catch { }
         _ = ProcessRunner.RunAsync(AdbPath, new[] { "-s", Serial, "forward", "--remove", $"tcp:{LocalPort}" }, TimeSpan.FromSeconds(5));
     }
@@ -151,7 +155,7 @@ public sealed class AdbService
         Log.RegisterSecret(hex);
         int remotePort = RandomNumberGenerator.GetInt32(20000, 60000);
 
-        var proc = new ManagedProcess(adb, new[] { "-s", serial, "shell", $"CLASSPATH={remoteDex}", "app_process", "/system/bin", "TunnelMain", remotePort.ToString() }, redirectStdin: true);
+        var proc = new ManagedProcess(adb, new[] { "-s", serial, "shell", $"CLASSPATH={remoteDex}", "app_process", "/system/bin", "app.cicibyte.cicipda.TunnelMain", remotePort.ToString() }, redirectStdin: true);
         var ready = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var errs = new List<string>();
         proc.OutLine += l =>

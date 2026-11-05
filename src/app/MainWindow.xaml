@@ -171,6 +171,36 @@
                             <TextBlock Text="02" Style="{StaticResource SectionTitle}" Foreground="{DynamicResource Green}" Margin="0,14,0,0"/>
                             <TextBlock Text="{Binding L[sec.prepare]}" Style="{StaticResource H1}" Margin="0,2,0,8"/>
                             <Border Style="{StaticResource Card}"><ItemsControl ItemsSource="{Binding Checklist}" ItemTemplate="{StaticResource CheckRow}"/></Border>
+
+                            <StackPanel Visibility="{Binding ShowStages, Converter={StaticResource BoolVis}}">
+                                <TextBlock Text="03" Style="{StaticResource SectionTitle}" Foreground="{DynamicResource Green}" Margin="0,14,0,0"/>
+                                <TextBlock Text="Connection progress" Style="{StaticResource H1}" Margin="0,2,0,8"/>
+                                <Border Style="{StaticResource Card}">
+                                    <ItemsControl ItemsSource="{Binding Stages}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4" x:Name="row">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                                    <Border Width="18" Height="18" CornerRadius="9" BorderThickness="1.5" BorderBrush="{Binding State, Converter={StaticResource StateBrush}}" VerticalAlignment="Top" Margin="0,1,0,0">
+                                                        <Path x:Name="ic" Style="{StaticResource Ico}" Width="10" Height="10" Data="M12 12h.01" Stroke="{Binding State, Converter={StaticResource StateBrush}}" StrokeThickness="2"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock x:Name="tt" Text="{Binding Title}" FontSize="12.5"/>
+                                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource MutedText}" FontSize="11" TextWrapping="Wrap" Visibility="{Binding Detail, Converter={StaticResource HasText}}"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding State}" Value="Ok"><Setter TargetName="ic" Property="Data" Value="{StaticResource IconCheck}"/></DataTrigger>
+                                                    <DataTrigger Binding="{Binding State}" Value="Fail"><Setter TargetName="ic" Property="Data" Value="{StaticResource IconX}"/></DataTrigger>
+                                                    <DataTrigger Binding="{Binding State}" Value="Warn"><Setter TargetName="ic" Property="Data" Value="{StaticResource IconAlert}"/></DataTrigger>
+                                                    <DataTrigger Binding="{Binding Active}" Value="True"><Setter TargetName="tt" Property="FontWeight" Value="SemiBold"/><Setter TargetName="ic" Property="Data" Value="M12 5a7 7 0 1 0 7 7"/></DataTrigger>
+                                                    <DataTrigger Binding="{Binding Skipped}" Value="True"><Setter TargetName="row" Property="Opacity" Value="0.45"/></DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- Right: control + live traffic -->
@@ -196,6 +226,19 @@
                                         <TextBlock Grid.Row="4" Text="{Binding L[lbl.internet]}" Style="{StaticResource Label}" Margin="0,3,16,3"/><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding NetText}" HorizontalAlignment="Right" FontSize="12.5" Margin="0,3"/>
                                         <TextBlock Grid.Row="5" Text="{Binding L[lbl.iface]}" Style="{StaticResource Label}" Margin="0,3,16,3"/><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding IfaceText}" HorizontalAlignment="Right" FontSize="12.5" Margin="0,3"/>
                                     </Grid>
+                                    <TextBlock Text="STATUS LAYERS" Style="{StaticResource Label}" Margin="0,14,0,6"/>
+                                    <ItemsControl ItemsSource="{Binding Indicators}">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="0,3,8,3">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding State, Converter={StaticResource StateBrush}}" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Title}" FontSize="11.5" Margin="7,0,0,0" Foreground="{Binding State, Converter={StaticResource StateBrush}}" TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Style="{StaticResource MutedText}" FontSize="11" Margin="0,8,0,0" Text="{Binding PhoneNetworkText, StringFormat='Phone network: {0}'}"/>
                                 </StackPanel>
                             </Border>
 
@@ -444,6 +487,9 @@
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="200"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="DNS servers (primary / secondary)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.DnsPrimary}"/><TextBox Grid.Column="2" Text="{Binding Edit.DnsSecondary}" Margin="8,0,0,0"/></Grid>
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBlock Text="Adapter MTU (576–1500)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.Mtu}"/></Grid>
                                 <CheckBox Content="IPv6 leak protection (route IPv6 into the tunnel)" IsChecked="{Binding Edit.Ipv6LeakProtection}" Margin="0,7"/>
+                                <CheckBox Content="Install and use the signed Android companion app (recommended)" IsChecked="{Binding Edit.UseCompanion}" Margin="0,7"/>
+                                <CheckBox Content="Check the signed release channel for companion updates" IsChecked="{Binding Edit.AutoUpdateCompanion}" Margin="0,7"/>
+                                <CheckBox Content="If the companion cannot be installed, fall back to the no-install shell helper" IsChecked="{Binding Edit.AllowLegacyFallback}" Margin="0,7"/>
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="adb.exe location (optional)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.AdbPath}"/></Grid>
                                 <TextBlock Text="Tunnel: AES-256-GCM over ADB loopback, Wintun adapter via tun2socks. Not WireGuard." Style="{StaticResource MutedText}" FontSize="11.5"/>
                             </StackPanel>

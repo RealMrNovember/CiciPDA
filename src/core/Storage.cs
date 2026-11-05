@@ -24,6 +24,9 @@ public sealed class AppSettings
     public string DnsSecondary { get; set; } = "1.0.0.1";
     public int Mtu { get; set; } = 1400;
     public bool Ipv6LeakProtection { get; set; } = true;
+    public bool UseCompanion { get; set; } = true;            // install/use the signed Android companion app (recommended)
+    public bool AutoUpdateCompanion { get; set; } = true;     // check the signed release channel for a newer companion
+    public bool AllowLegacyFallback { get; set; }              // fall back to the no-install shell helper if the APK cannot be installed
     public bool ShareWifi { get; set; }
     public string HotspotSsid { get; set; } = "CiciPDA";
     public string HotspotPasswordProtected { get; set; } = "";   // DPAPI, never plain text

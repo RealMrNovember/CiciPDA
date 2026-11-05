@@ -1,0 +1,51 @@
+; Inno Setup 6 script. Built by installer\build-installer.ps1 (needs ISCC.exe; NOT verified on this machine - Inno Setup is not installed).
+#define AppName "CiciPDA"
+#ifndef AppVersion
+  #define AppVersion "2.0.0"
+#endif
+#ifndef PublishDir
+  #define PublishDir "..\artifacts\publish"
+#endif
+
+[Setup]
+AppId={{B5C0E9B4-6F8E-4C1B-9F55-3C1A7A3E6D21}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppPublisher=Mike Ross
+DefaultDirName={autopf}\{#AppName}
+DefaultGroupName={#AppName}
+PrivilegesRequired=admin
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+OutputDir=..\artifacts
+OutputBaseFilename=CiciPDA-Setup-{#AppVersion}
+Compression=lzma2
+SolidCompression=yes
+UninstallDisplayIcon={app}\CiciPDA.exe
+WizardStyle=modern
+; Code signing: pass /Ssigntool="signtool sign ..." to ISCC and uncomment the next line for release builds.
+; SignTool=signtool
+; Closes a running CiciPDA so files can be replaced.
+CloseApplications=yes
+
+[Files]
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "..\THIRD_PARTY.md"; DestDir: "{app}\licenses"; Flags: ignoreversion
+
+[Icons]
+Name: "{group}\{#AppName}"; Filename: "{app}\CiciPDA.exe"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\CiciPDA.exe"; Tasks: desktopicon
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
+
+[Registry]
+; The virtual adapter, routes and DNS need administrator rights; ask for them at launch instead of making the user find a setting.
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers"; ValueType: string; ValueName: "{app}\CiciPDA.exe"; ValueData: "~ RUNASADMIN"; Flags: uninsdeletevalue
+
+[Run]
+Filename: "{app}\CiciPDA.exe"; Description: "Launch CiciPDA"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; Safety net: remove a leftover adapter/forward if the app was killed. The app also self-heals on next start.
+Filename: "{app}\adb\adb.exe"; Parameters: "forward --remove-all"; Flags: runhidden; RunOnceId: "AdbForwards"

@@ -18,7 +18,8 @@ public sealed class AgentConnectException : Exception
 /// </summary>
 public sealed class AgentChannel : Stream
 {
-    public const int MaxPlain = 16000;
+    public const int MaxPlain = 15000;
+    public const int Protocol = 3;
     readonly TcpClient _tcp;
     readonly NetworkStream _ns;
     readonly AesGcm _send, _recv;
@@ -32,11 +33,12 @@ public sealed class AgentChannel : Stream
         _tcp = tcp; _ns = tcp.GetStream(); _send = send; _recv = recv;
     }
 
-    public static byte[] Derive(byte[] sessionKey, string label, byte[] salt)
+    public static byte[] Derive(byte[] sessionKey, string label, byte[] salt, byte[] serverNonce)
     {
-        var data = new byte[label.Length + salt.Length];
+        var data = new byte[label.Length + salt.Length + serverNonce.Length];
         Encoding.ASCII.GetBytes(label, data);
         salt.CopyTo(data, label.Length);
+        serverNonce.CopyTo(data, label.Length + salt.Length);
         return HMACSHA256.HashData(sessionKey, data);
     }
 
@@ -47,8 +49,8 @@ public sealed class AgentChannel : Stream
         return n;
     }
 
-    /// <summary>Opens a connection to the phone helper and asks it to connect to host:port. Throws AgentConnectException on failure.</summary>
-    public static async Task<AgentChannel> ConnectAsync(int localPort, byte[] sessionKey, string host, int port, CancellationToken ct, TimeSpan? timeout = null)
+    /// <summary>Opens an authenticated channel and sends a command ("T:host:port", "U" or "S"). Returns the channel and the first reply frame.</summary>
+    static async Task<(AgentChannel ch, byte[] reply)> OpenAsync(int localPort, byte[] sessionKey, string command, CancellationToken ct, TimeSpan? timeout)
     {
         var tcp = new TcpClient { NoDelay = true };
         try
@@ -56,15 +58,19 @@ public sealed class AgentChannel : Stream
             using var to = CancellationTokenSource.CreateLinkedTokenSource(ct);
             to.CancelAfter(timeout ?? TimeSpan.FromSeconds(20));
             await tcp.ConnectAsync(IPAddress.Loopback, localPort, to.Token);
+            var ns = tcp.GetStream();
             var salt = RandomNumberGenerator.GetBytes(16);
-            await tcp.GetStream().WriteAsync(salt, to.Token);
-            var ch = new AgentChannel(tcp, new AesGcm(Derive(sessionKey, "c2s", salt), 16), new AesGcm(Derive(sessionKey, "s2c", salt), 16));
-            await ch.WriteAsync(Encoding.UTF8.GetBytes($"{host}:{port}"), to.Token);
-            var status = new byte[1];
-            int n = await ch.ReadAsync(status, to.Token);
-            if (n != 1) throw new AgentConnectException("Phone helper closed the connection (wrong key or helper stopped).");
-            if (status[0] != 0) throw new AgentConnectException($"The phone could not reach {host}:{port}.");
-            return ch;
+            await ns.WriteAsync(salt, to.Token);
+            var nonce = new byte[16];
+            try { await ns.ReadExactlyAsync(nonce, to.Token); }
+            catch (EndOfStreamException) { throw new AgentConnectException("The phone helper closed the connection (not running, or protocol mismatch)."); }
+            var ch = new AgentChannel(tcp, new AesGcm(Derive(sessionKey, "c2s", salt, nonce), 16), new AesGcm(Derive(sessionKey, "s2c", salt, nonce), 16));
+            await ch.WriteAsync(Encoding.UTF8.GetBytes(command), to.Token);
+            var hdr = new byte[2];
+            // A wrong pairing key makes the relay drop the connection without a reply.
+            if (!await ch.ReadFrameAsync(to.Token)) throw new AgentConnectException("Pairing key rejected or the helper stopped.");
+            var reply = ch.TakeFrame();
+            return (ch, reply);
         }
         catch (AgentConnectException) { tcp.Dispose(); throw; }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { tcp.Dispose(); throw new AgentConnectException("Timed out talking to the phone helper."); }
@@ -72,6 +78,51 @@ public sealed class AgentChannel : Stream
         { tcp.Dispose(); throw new AgentConnectException("Phone helper connection failed: " + ex.Message, ex); }
         catch { tcp.Dispose(); throw; }
     }
+
+    /// <summary>TCP stream to host:port through the phone.</summary>
+    public static async Task<AgentChannel> ConnectAsync(int localPort, byte[] sessionKey, string host, int port, CancellationToken ct, TimeSpan? timeout = null)
+    {
+        var (ch, reply) = await OpenAsync(localPort, sessionKey, $"T:{host}:{port}", ct, timeout);
+        if (reply.Length != 1 || reply[0] != 0) { ch.Dispose(); throw new AgentConnectException($"The phone could not reach {host}:{port}."); }
+        return ch;
+    }
+
+    /// <summary>UDP datagram relay channel (frames: family, address, port, payload).</summary>
+    public static async Task<AgentChannel> ConnectUdpAsync(int localPort, byte[] sessionKey, CancellationToken ct)
+    {
+        var (ch, reply) = await OpenAsync(localPort, sessionKey, "U", ct, null);
+        if (reply.Length != 1 || reply[0] != 0) { ch.Dispose(); throw new AgentConnectException("The phone helper refused UDP relaying."); }
+        return ch;
+    }
+
+    /// <summary>Authenticated health/diagnostic report from the phone helper (JSON). Also proves the pairing key and protocol version.</summary>
+    public static async Task<string> GetStatusAsync(int localPort, byte[] sessionKey, CancellationToken ct, TimeSpan? timeout = null)
+    {
+        var (ch, reply) = await OpenAsync(localPort, sessionKey, "S", ct, timeout ?? TimeSpan.FromSeconds(8));
+        ch.Dispose();
+        return Encoding.UTF8.GetString(reply);
+    }
+
+    byte[]? _frame;
+    byte[] TakeFrame() { var f = _frame ?? Array.Empty<byte>(); _frame = null; return f; }
+
+    /// <summary>Reads exactly one frame (for command/reply and datagram exchanges). False if the peer closed cleanly.</summary>
+    public async Task<bool> ReadFrameAsync(CancellationToken ct)
+    {
+        var hdr = new byte[2];
+        if (!await ReadFullAsync(hdr, ct)) return false;
+        int l = BinaryPrimitives.ReadUInt16BigEndian(hdr);
+        if (l < 16 || l > MaxPlain + 16) throw new IOException("Invalid frame length from phone helper.");
+        var c = new byte[l];
+        if (!await ReadFullAsync(c, ct)) throw new IOException("Truncated frame.");
+        var plain = new byte[l - 16];
+        try { _recv.Decrypt(Nonce(_rx++), c.AsSpan(0, l - 16), c.AsSpan(l - 16, 16), plain); }
+        catch (CryptographicException) { throw new IOException("Frame authentication failed."); }
+        _frame = plain;
+        return true;
+    }
+
+    public byte[] Frame => TakeFrame();
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
     {
@@ -95,16 +146,9 @@ public sealed class AgentChannel : Stream
     {
         if (_pendingPos >= _pending.Length)
         {
-            var hdr = new byte[2];
-            if (!await ReadFullAsync(hdr, ct)) return 0;
-            int l = BinaryPrimitives.ReadUInt16BigEndian(hdr);
-            if (l < 16 || l > MaxPlain + 16) throw new IOException("Invalid frame length from phone helper.");
-            var ct1 = new byte[l];
-            if (!await ReadFullAsync(ct1, ct)) throw new IOException("Truncated frame.");
-            var plain = new byte[l - 16];
-            try { _recv.Decrypt(Nonce(_rx++), ct1.AsSpan(0, l - 16), ct1.AsSpan(l - 16, 16), plain); }
-            catch (CryptographicException) { throw new IOException("Frame authentication failed."); }
-            _pending = plain; _pendingPos = 0;
+            if (!await ReadFrameAsync(ct)) return 0;
+            _pending = TakeFrame(); _pendingPos = 0;
+            if (_pending.Length == 0) return 0;
         }
         int n = Math.Min(buffer.Length, _pending.Length - _pendingPos);
         _pending.AsMemory(_pendingPos, n).CopyTo(buffer);
@@ -144,7 +188,7 @@ public sealed class AgentChannel : Stream
 
 /// <summary>
 /// Loopback SOCKS5 server consumed by tun2socks. TCP CONNECT is relayed through the phone helper.
-/// UDP ASSOCIATE supports DNS only (UDP/53 is converted to DNS-over-TCP through the helper); other UDP is dropped and counted.
+/// UDP ASSOCIATE is relayed as datagrams through one UDP channel to the phone (DNS, QUIC, ...). IP fragments are dropped and counted.
 /// </summary>
 public sealed class SocksRelay : IDisposable
 {
@@ -152,7 +196,7 @@ public sealed class SocksRelay : IDisposable
     readonly byte[] _key;
     TcpListener? _listener;
     readonly CancellationTokenSource _cts = new();
-    long _bytesDown, _bytesUp, _active, _total, _failed, _udpDropped, _dnsQueries, _dnsFailures;
+    long _bytesDown, _bytesUp, _active, _total, _failed, _udpDropped, _dnsQueries, _udpForwarded;
 
     public int Port { get; private set; }
     public long BytesDown => Interlocked.Read(ref _bytesDown);
@@ -162,7 +206,7 @@ public sealed class SocksRelay : IDisposable
     public long FailedConnections => Interlocked.Read(ref _failed);
     public long UdpDropped => Interlocked.Read(ref _udpDropped);
     public long DnsQueries => Interlocked.Read(ref _dnsQueries);
-    public long DnsFailures => Interlocked.Read(ref _dnsFailures);
+    public long UdpForwarded => Interlocked.Read(ref _udpForwarded);
 
     public SocksRelay(int agentLocalPort, byte[] sessionKey) { _agentPort = agentLocalPort; _key = sessionKey; }
 
@@ -274,70 +318,68 @@ public sealed class SocksRelay : IDisposable
     {
         using var udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         int port = ((IPEndPoint)udp.Client.LocalEndPoint!).Port;
-        var rep = new byte[] { 5, 0, 0, 1, 127, 0, 0, 1, (byte)(port >> 8), (byte)port };
-        await ns.WriteAsync(rep, ct);
+        await ns.WriteAsync(new byte[] { 5, 0, 0, 1, 127, 0, 0, 1, (byte)(port >> 8), (byte)port }, ct);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
         // The association lives as long as the TCP control connection.
         var ctl = Task.Run(async () => { try { var b = new byte[1]; while (await ns.ReadAsync(b, linked.Token) > 0) { } } catch { } linked.Cancel(); });
+        AgentChannel? ch = null;
+        IPEndPoint? client = null;
+        Task? reader = null;
         try
         {
+            ch = await AgentChannel.ConnectUdpAsync(_agentPort, _key, linked.Token);
             while (!linked.IsCancellationRequested)
             {
                 var res = await udp.ReceiveAsync(linked.Token);
-                _ = Task.Run(() => HandleDatagram(udp, res, linked.Token));
+                client = res.RemoteEndPoint;
+                var d = res.Buffer;
+                if (d.Length < 10 || d[2] != 0) { Interlocked.Increment(ref _udpDropped); continue; }   // fragments unsupported
+                byte[] frame;
+                if (d[3] == 1 && d.Length >= 10) { frame = new byte[1 + 4 + 2 + d.Length - 10]; frame[0] = 4; Array.Copy(d, 4, frame, 1, 6); Array.Copy(d, 10, frame, 7, d.Length - 10); }
+                else if (d[3] == 4 && d.Length >= 22) { frame = new byte[1 + 16 + 2 + d.Length - 22]; frame[0] = 6; Array.Copy(d, 4, frame, 1, 18); Array.Copy(d, 22, frame, 19, d.Length - 22); }
+                else { Interlocked.Increment(ref _udpDropped); continue; }                                // domain-name UDP targets are not produced by tun2socks
+                if (frame.Length > AgentChannel.MaxPlain) { Interlocked.Increment(ref _udpDropped); continue; }
+                int dport = BinaryPrimitives.ReadUInt16BigEndian(frame.AsSpan(frame[0] == 4 ? 5 : 17));
+                if (dport == 53) Interlocked.Increment(ref _dnsQueries);
+                Interlocked.Increment(ref _udpForwarded);
+                await ch.WriteAsync(frame, linked.Token);
+                Interlocked.Add(ref _bytesUp, frame.Length);
+                reader ??= Task.Run(() => UdpReturnLoop(ch, udp, () => client, linked.Token));
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException) { }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException or IOException or AgentConnectException)
+        {
+            if (ex is AgentConnectException) Log.Warn("socks", "UDP channel: " + ex.Message);
+        }
         linked.Cancel();
+        ch?.Dispose();
         await ctl;
+        if (reader != null) try { await reader; } catch { }
     }
 
-    async Task HandleDatagram(UdpClient udp, UdpReceiveResult res, CancellationToken ct)
+    async Task UdpReturnLoop(AgentChannel ch, UdpClient udp, Func<IPEndPoint?> client, CancellationToken ct)
     {
         try
         {
-            var d = res.Buffer;
-            if (d.Length < 10 || d[2] != 0) { Interlocked.Increment(ref _udpDropped); return; }
-            int pos = 4; string host;
-            if (d[3] == 1) { host = new IPAddress(d.AsSpan(pos, 4)).ToString(); pos += 4; }
-            else if (d[3] == 4) { host = new IPAddress(d.AsSpan(pos, 16)).ToString(); pos += 16; }
-            else if (d[3] == 3) { int l = d[pos]; host = Encoding.ASCII.GetString(d, pos + 1, l); pos += 1 + l; }
-            else { Interlocked.Increment(ref _udpDropped); return; }
-            int dport = BinaryPrimitives.ReadUInt16BigEndian(d.AsSpan(pos)); pos += 2;
-            if (dport != 53) { Interlocked.Increment(ref _udpDropped); return; }
-
-            var query = d.AsSpan(pos).ToArray();
-            Interlocked.Increment(ref _dnsQueries);
-            var answer = await DnsOverTcpAsync(host, query, ct);
-            if (answer == null) { Interlocked.Increment(ref _dnsFailures); return; }
-            var hdr = d.AsSpan(0, pos).ToArray();   // echo original address header
-            var outp = new byte[hdr.Length + answer.Length];
-            hdr.CopyTo(outp, 0); answer.CopyTo(outp, hdr.Length);
-            await udp.SendAsync(outp, outp.Length, res.RemoteEndPoint);
+            while (await ch.ReadFrameAsync(ct))
+            {
+                var f = ch.Frame;
+                if (f.Length < 7) continue;
+                int alen = f[0] == 4 ? 4 : 16;
+                if (f.Length < 1 + alen + 2) continue;
+                var hdr = new byte[4 + alen + 2];
+                hdr[3] = (byte)(alen == 4 ? 1 : 4);
+                Array.Copy(f, 1, hdr, 4, alen + 2);
+                var outp = new byte[hdr.Length + f.Length - (1 + alen + 2)];
+                hdr.CopyTo(outp, 0);
+                Array.Copy(f, 1 + alen + 2, outp, hdr.Length, f.Length - (1 + alen + 2));
+                var dst = client();
+                if (dst == null) continue;
+                await udp.SendAsync(outp, outp.Length, dst);
+                Interlocked.Add(ref _bytesDown, f.Length);
+            }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException) { }
-        catch (Exception ex) { Log.Debug("socks", "udp: " + ex.Message); }
-    }
-
-    async Task<byte[]?> DnsOverTcpAsync(string server, byte[] query, CancellationToken ct)
-    {
-        try
-        {
-            using var to = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            to.CancelAfter(TimeSpan.FromSeconds(6));
-            using var ch = await AgentChannel.ConnectAsync(_agentPort, _key, server, 53, to.Token, TimeSpan.FromSeconds(6));
-            var msg = new byte[2 + query.Length];
-            BinaryPrimitives.WriteUInt16BigEndian(msg, (ushort)query.Length);
-            query.CopyTo(msg, 2);
-            await ch.WriteAsync(msg, to.Token);
-            Interlocked.Add(ref _bytesUp, msg.Length);
-            var l = new byte[2]; await ch.ReadExactlyAsync(l, to.Token);
-            var resp = new byte[BinaryPrimitives.ReadUInt16BigEndian(l)];
-            await ch.ReadExactlyAsync(resp, to.Token);
-            Interlocked.Add(ref _bytesDown, resp.Length + 2);
-            return resp;
-        }
-        catch (Exception ex) when (ex is AgentConnectException or IOException or OperationCanceledException) { return null; }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException or IOException) { }
     }
 
     public void Dispose()

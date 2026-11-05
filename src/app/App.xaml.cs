@@ -37,8 +37,9 @@ public partial class App : Application
         if (!preview) { try { journal.RecoverAsync(adb).Wait(TimeSpan.FromSeconds(20)); } catch (Exception ex) { Log.Error("recovery", ex); } }
 
         var devices = new DeviceStore(); var history = new HistoryStore();
-        var orch = new Orchestrator(settings, adb, devices, history, journal);
-        var vm = new ShellViewModel(orch, settings, history, devices, new DiagnosticsService(adb, orch), adb);
+        var comp = new CompanionManager(adb, () => settings.Current);
+        var orch = new Orchestrator(settings, adb, devices, history, journal, comp);
+        var vm = new ShellViewModel(orch, settings, history, devices, new DiagnosticsService(adb, orch, comp), adb);
         var win = new MainWindow(vm, orch);
         MainWindow = win;
 

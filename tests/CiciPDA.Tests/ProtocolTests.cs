@@ -19,10 +19,10 @@ public sealed class AgentFixture : IDisposable
         string? java = new[] { @"C:\Program Files\Android\Android Studio\jbr\bin\java.exe" }.FirstOrDefault(File.Exists);
         string? cls = null;
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
-            if (File.Exists(Path.Combine(d.FullName, "src", "agent", "out", "TunnelMain.class"))) { cls = Path.Combine(d.FullName, "src", "agent", "out"); break; }
+            if (File.Exists(Path.Combine(d.FullName, "src", "agent", "out", "classes", "app", "cicibyte", "cicipda", "TunnelMain.class"))) { cls = Path.Combine(d.FullName, "src", "agent", "out", "classes"); break; }
         if (java == null || cls == null) return;
         Port = ((IPEndPoint)new Func<IPEndPoint>(() => { var l = new TcpListener(IPAddress.Loopback, 0); l.Start(); var e = (IPEndPoint)l.LocalEndpoint; l.Stop(); return e; })()).Port;
-        _p = new ManagedProcess(java, new[] { "-cp", cls, "TunnelMain", Port.ToString() }, redirectStdin: true);
+        _p = new ManagedProcess(java, new[] { "-cp", cls, "app.cicibyte.cicipda.TunnelMain", Port.ToString() }, redirectStdin: true);
         var ready = new TaskCompletionSource<bool>();
         _p.OutLine += l => { if (l.StartsWith("READY")) ready.TrySetResult(true); };
         _p.Start();
@@ -68,6 +68,58 @@ public class ProtocolTests : IClassFixture<AgentFixture>
         await ch.ReadExactlyAsync(got);
         await writer;
         Assert.Equal(data, got);
+    }
+
+    [Fact]
+    public async Task Status_ReportsVersionAndCounters_Authenticated()
+    {
+        if (!_a.Available) return;
+        var json = await AgentChannel.GetStatusAsync(_a.Port, _a.Key, CancellationToken.None);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(3, doc.RootElement.GetProperty("protocol").GetInt32());
+        Assert.Equal("shell", doc.RootElement.GetProperty("version").GetString());
+    }
+
+    [Fact]
+    public async Task UdpChannel_RelaysDatagrams_Ipv4()
+    {
+        if (!_a.Available) return;
+        using var echo = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        int eport = ((IPEndPoint)echo.Client.LocalEndPoint!).Port;
+        _ = Task.Run(async () => { try { while (true) { var r = await echo.ReceiveAsync(); await echo.SendAsync(r.Buffer, r.Buffer.Length, r.RemoteEndPoint); } } catch { } });
+        using var ch = await AgentChannel.ConnectUdpAsync(_a.Port, _a.Key, CancellationToken.None);
+        var payload = RandomNumberGenerator.GetBytes(1200);
+        var f = new byte[1 + 4 + 2 + payload.Length];
+        f[0] = 4; f[1] = 127; f[4] = 1; f[5] = (byte)(eport >> 8); f[6] = (byte)eport; payload.CopyTo(f, 7);
+        await ch.WriteAsync(f);
+        using var to = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        Assert.True(await ch.ReadFrameAsync(to.Token));
+        var back = ch.Frame;
+        Assert.Equal(4, back[0]); Assert.Equal(payload, back[7..]);
+    }
+
+    [Fact]
+    public async Task SocksRelay_UdpAssociate_RelaysDatagramsThroughAgent()
+    {
+        if (!_a.Available) return;
+        using var echo = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        int eport = ((IPEndPoint)echo.Client.LocalEndPoint!).Port;
+        _ = Task.Run(async () => { try { while (true) { var r = await echo.ReceiveAsync(); await echo.SendAsync(r.Buffer, r.Buffer.Length, r.RemoteEndPoint); } } catch { } });
+        using var relay = new SocksRelay(_a.Port, _a.Key); relay.Start();
+        using var c = new TcpClient(); await c.ConnectAsync(IPAddress.Loopback, relay.Port);
+        var s = c.GetStream();
+        await s.WriteAsync(new byte[] { 5, 1, 0 }); await s.ReadExactlyAsync(new byte[2]);
+        await s.WriteAsync(new byte[] { 5, 3, 0, 1, 0, 0, 0, 0, 0, 0 });
+        var rep = new byte[10]; await s.ReadExactlyAsync(rep); Assert.Equal(0, rep[1]);
+        int uport = (rep[8] << 8) | rep[9];
+        using var u = new UdpClient(); u.Connect(IPAddress.Loopback, uport);
+        var data = System.Text.Encoding.ASCII.GetBytes("quic-like datagram");
+        var pkt = new byte[] { 0, 0, 0, 1, 127, 0, 0, 1, (byte)(eport >> 8), (byte)eport }.Concat(data).ToArray();
+        await u.SendAsync(pkt);
+        using var to = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var got = await u.ReceiveAsync(to.Token);
+        Assert.Equal(data, got.Buffer[10..]);
+        Assert.True(relay.UdpForwarded >= 1);
     }
 
     [Fact]
@@ -124,8 +176,10 @@ public class ProtocolTests : IClassFixture<AgentFixture>
     public void Derive_GivesDifferentKeysPerDirectionAndSalt()
     {
         var k = RandomNumberGenerator.GetBytes(32); var salt = RandomNumberGenerator.GetBytes(16);
-        Assert.NotEqual(AgentChannel.Derive(k, "c2s", salt), AgentChannel.Derive(k, "s2c", salt));
-        Assert.NotEqual(AgentChannel.Derive(k, "c2s", salt), AgentChannel.Derive(k, "c2s", RandomNumberGenerator.GetBytes(16)));
+        var n = RandomNumberGenerator.GetBytes(16);
+        Assert.NotEqual(AgentChannel.Derive(k, "c2s", salt, n), AgentChannel.Derive(k, "s2c", salt, n));
+        Assert.NotEqual(AgentChannel.Derive(k, "c2s", salt, n), AgentChannel.Derive(k, "c2s", RandomNumberGenerator.GetBytes(16), n));
+        Assert.NotEqual(AgentChannel.Derive(k, "c2s", salt, n), AgentChannel.Derive(k, "c2s", salt, RandomNumberGenerator.GetBytes(16)));
     }
 
     sealed class LStop : IDisposable { readonly TcpListener _l; public LStop(TcpListener l) { _l = l; } public void Dispose() => _l.Stop(); }
@@ -184,7 +238,7 @@ public class OrchestratorTests
         if (WinNet.IsElevated()) return; // this test only makes sense for a non-elevated run
         AppPaths.DataDir = Path.Combine(Path.GetTempPath(), "cici-test-" + Guid.NewGuid());
         var s = new SettingsStore(); var adb = new AdbService(() => s.Current);
-        var o = new Orchestrator(s, adb, new DeviceStore(), new HistoryStore(), new RecoveryJournal());
+        var o = new Orchestrator(s, adb, new DeviceStore(), new HistoryStore(), new RecoveryJournal(), new CompanionManager(adb, () => s.Current));
         var seen = new List<ConnState>();
         o.Changed += () => seen.Add(o.State);
         await o.ConnectAsync(ConnectionMethod.PhoneVpn);

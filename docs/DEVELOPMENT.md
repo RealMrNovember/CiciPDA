@@ -1,6 +1,6 @@
 # CiciPDA — development status
 
-Last updated: 2026-11-05. This document states what was built, what was actually tested, and what still needs hardware.
+Last updated: 2026-11-06 (companion deployment added; see the last section). This document states what was built, what was actually tested, and what still needs hardware.
 
 ## Architecture
 
@@ -74,3 +74,25 @@ Development preview (renders a page to PNG; `--demo` fills **sample numbers for 
 * Language support covers navigation, status and the main page (English/Turkish); other pages are English.
 * Single-file publish is configured (`-p:PublishSingleFile=true`) but not yet exercised.
 * The repo still contains the old `PdaNetPortable.exe` release artifact and old `data/` files from the previous version.
+
+---
+
+## Companion deployment (added 2026-11-06)
+
+* **Android companion** (`src/agent/android`, package `app.cicibyte.cicipda`): Java, no Gradle. A foreground `RelayService` (type `specialUse`, started and stopped only by the adb shell through `android.permission.DUMP`), a small `MainActivity` that explains the app and asks for the notification permission, and the shared `Relay` (protocol v3, see PROTOCOL.md). Java was kept rather than migrating to Kotlin: the relay is about 250 lines of plain `java.net`/`javax.crypto`, and Kotlin would add a runtime dependency and build tooling without benefit.
+* **Deployment manager** (`src/core/Companion.cs`): inspects model, Android version, installed companion version and notification permission; verifies the release; installs or updates with `adb install -r`; classifies and explains failures (blocked "install via USB", signature mismatch, downgrade, storage, ABI); starts the service (key via stdin); forwards a port and waits for an authenticated status reply.
+* **Release trust** (`ReleaseTrust.cs`, `ApkSigning.cs`, `Pins.cs`, `tools/ReleaseSigner`): see RELEASE.md. A newer companion is downloaded only from the pinned GitHub release channel, after the signed metadata verifies.
+* **Orchestrator** reports nine stages (detect, authorize, companion, install, service, tunnel, adapter, network, internet) and six independent status layers (device connected, companion installed, companion running, tunnel connected, Windows network configured, internet verified), shown separately in the UI. Health polling uses the authenticated status command and triggers reconnect if the companion stops answering.
+* **UDP** is relayed (protocol v3), so QUIC and other UDP no longer fall back; see PROTOCOL.md for the remaining limits (no ICMP).
+* **Installer**: `installer/CiciPDA.iss` and `installer/build-installer.ps1` (Inno Setup; self-contained publish including adb, Wintun, tun2socks, companion and licences). `THIRD_PARTY.md` lists licence obligations (tun2socks is GPL-3.0; adb redistribution terms need review).
+
+### Tested (2026-11-06, no phone, non-elevated)
+* 31 xUnit tests pass, including: loopback protocol v3 against the real Java relay (TCP, UDP datagrams, SOCKS UDP ASSOCIATE, status command, wrong key); the trust chain (bundled release verifies; tampered APK rejected by hash; tampered metadata rejected by signature; matching hash without a valid metadata signature rejected; unsafe file name rejected; APK without signing block rejected); the C# APK-certificate parser agrees with `apksigner`'s certificate digest; install-failure classification; DPAPI-protected pairing key.
+* The companion APK builds, is aligned, and is signed (`apksigner verify` passes for v2/v3).
+* `dotnet publish` (self-contained win-x64) produces a runnable 148 MB folder containing tools, companion, adb and agent; the published exe starts cleanly.
+
+### NOT tested (needs a phone, administrator rights, or other tooling)
+* Installing and starting the APK on any real Android device (all Android versions and OEM variants), the first-run notification flow, foreground-service survival, the status JSON network fields, phone restart, USB unplug during a session, the APK update path.
+* Elevated adapter/route/DNS/rollback, DNS failure handling, QUIC/UDP through a real phone, IPv6 behaviour, Windows NCSI reaching Internet, browser and background-service behaviour, Windows restart.
+* The Inno Setup installer (Inno Setup is not installed here), code signing, a fresh-Windows install, and the update download against a real GitHub release.
+* Production signing and metadata keys have not been created; the development keys are in use.

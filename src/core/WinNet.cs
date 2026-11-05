@@ -90,7 +90,7 @@ public sealed class TunnelNetwork : IDisposable
 
     public TunnelNetwork(RecoveryJournal journal) { _journal = journal; }
 
-    public async Task StartAsync(int socksPort, AppSettings s, IPAddress? bypassHost, CancellationToken ct)
+    public async Task StartAsync(int socksPort, AppSettings s, IPAddress? bypassHost, CancellationToken ct, Action? onAdapter = null)
     {
         if (!WinNet.IsElevated()) throw new InvalidOperationException("Administrator rights are required to create the virtual adapter.");
         if (!File.Exists(AppPaths.Tun2Socks)) throw new FileNotFoundException("tun2socks.exe is missing from the tools folder. Run fetch-tools.ps1.");
@@ -120,6 +120,7 @@ public sealed class TunnelNetwork : IDisposable
         if (ni == null) throw new TimeoutException("The Wintun adapter did not appear within 15 seconds.");
         IfIndex = WinNet.IndexOf(ni);
         Log.Ok("adapter", $"Virtual adapter {AdapterName} created (interface {IfIndex}).");
+        onAdapter?.Invoke();
 
         string idx = IfIndex.ToString();
         await Must("set address", "interface", "ipv4", "set", "address", $"name={idx}", "source=static", $"address={TunAddress}", "mask=255.255.255.0");

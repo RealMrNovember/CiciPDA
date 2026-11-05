@@ -5,3 +5,6 @@ obj/
 data/*.log
 src/app/tools/
 src/agent/out/
+release/
+artifacts/
+src/app/companion/*.idsig
