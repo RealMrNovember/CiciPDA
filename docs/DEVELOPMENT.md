@@ -87,3 +87,6 @@ From the user's `sessions.json` timeline: 01:55 DNS failure -> the adapter outli
 * tun2socks is stopped with Ctrl+Break first (Go maps it to an interrupt, letting it close its own adapter) and only killed after 5 s. This is done only from a console-less GUI process: when exercised from a terminal-hosted test process the control event also hit the terminal, so there is **no automated test** for it and the code refuses to do it when the process has a console. It has **not been verified against the real tun2socks**.
 * The log file failing to write is now reported once in the Activity page (the user's elevated runs were not appearing in `cicipda.log`; cause not yet found).
 * Rolled back the 2.1.6 `pnputil` wait (kept only as a best-effort background cleanup).
+
+### 2.1.8: visible update progress
+The header update pill now shows the update process: while downloading it displays "Downloading CiciPDA X", a percentage chip and a progress bar; then "Verifying" and "Installing" (indeterminate bar). While busy the button is **disabled** (cyan, wait cursor) and the command ignores further clicks, so it cannot be pressed repeatedly; after an error it resets so the user can retry. Covered by source-level tests (the live click path needs UAC and a newer release and has not been exercised end to end).

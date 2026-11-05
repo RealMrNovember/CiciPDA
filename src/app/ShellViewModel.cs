@@ -464,7 +464,24 @@ public sealed class ShellViewModel : Observable
     bool _checking;
     public bool UpdateAvailable { get => _updateAvail; private set => Set(ref _updateAvail, value); }
     bool _updateAvail;
-    public string UpdateBanner => _demo ? "CiciPDA 2.2.0 is available" : _update == null ? "" : $"CiciPDA {_update.Manifest.Version} is available";
+    // Update progress shown in the header pill. While busy the pill is disabled so the button cannot be pressed twice.
+    public bool UpdateBusy { get => _updBusy; private set { if (Set(ref _updBusy, value)) { Raise(nameof(UpdateBanner)); Raise(nameof(UpdateTooltip)); } } }
+    bool _updBusy;
+    public double UpdateProgress { get => _updProgress; private set => Set(ref _updProgress, value); }
+    double _updProgress;
+    public bool UpdateIndeterminate { get => _updIndet; private set => Set(ref _updIndet, value); }
+    bool _updIndet;
+    public string UpdateChip { get => _updChip; private set => Set(ref _updChip, value); }
+    string _updChip = "Update";
+    string _updPhase = "";
+    string UpdateVersion => _update?.Manifest.Version ?? "";
+    public string UpdateBanner => _demo && !UpdateBusy ? "CiciPDA 2.2.0 is available" : _update == null ? "" : UpdateBusy ? $"{_updPhase} CiciPDA {UpdateVersion}" : $"CiciPDA {UpdateVersion} is available";
+    public string UpdateTooltip => UpdateBusy ? "The update is in progress - please wait" : "Download and install the update";
+
+    void SetUpdatePhase(string phase, string chip, double progress, bool indeterminate)
+    {
+        _updPhase = phase; UpdateChip = chip; UpdateProgress = progress; UpdateIndeterminate = indeterminate; Raise(nameof(UpdateBanner));
+    }
     public string CurrentVersionText => AppUpdater.CurrentVersion.ToString();
 
     async Task CheckForUpdatesAsync(bool manual)
@@ -492,15 +509,33 @@ public sealed class ShellViewModel : Observable
 
     async Task OnInstallUpdate(object? arg)
     {
-        if (_update == null) return;
+        if (_update == null || UpdateBusy) return;                       // a second click while busy does nothing
         string warn = Orch.IsActive || Orch.IsBusy ? " Your connection will be closed first and your network settings restored." : "";
         if (!Dialogs.Confirm("Install update", $"Download and install CiciPDA {_update.Manifest.Version}? The signed installer is verified before it runs.{warn}", "Install", false)) return;
-        UpdateStatus = "Downloading...";
-        var path = await _updater.DownloadAsync(_update, new Progress<double>(p => UpdateStatus = $"Downloading... {p:P0}"), CancellationToken.None);
-        UpdateStatus = "Verified. Closing CiciPDA and starting the installer...";
-        await Orch.ShutdownAsync();
-        AppUpdater.LaunchInstaller(path);
-        Application.Current.Shutdown();
+        if (UpdateBusy) return;
+        UpdateBusy = true;
+        try
+        {
+            SetUpdatePhase("Downloading", "0%", 0, false);
+            UpdateStatus = "Downloading...";
+            var path = await _updater.DownloadAsync(_update, new Progress<double>(p =>
+            {
+                UpdateStatus = $"Downloading... {p:P0}";
+                SetUpdatePhase("Downloading", $"{p:P0}", p, false);
+            }), CancellationToken.None);
+            SetUpdatePhase("Verifying", "Verifying", 1, true);          // the signed SHA-256 was just checked inside DownloadAsync
+            UpdateStatus = "Verified. Closing CiciPDA and starting the installer...";
+            SetUpdatePhase("Installing", "Installing", 1, true);
+            await Orch.ShutdownAsync();
+            AppUpdater.LaunchInstaller(path);
+            Application.Current.Shutdown();                              // stays busy: the application is closing
+        }
+        catch
+        {
+            UpdateBusy = false; SetUpdatePhase("", "Update", 0, false);   // let the user retry after an error
+            UpdateStatus = "The update failed. Try again.";
+            throw;
+        }
     }
 
     bool _demo;
@@ -520,7 +555,9 @@ public sealed class ShellViewModel : Observable
         Stages.Clear();
         var titles = new[] { "Detect phone", "Check USB debugging authorization", "Check Android companion", "Install / update companion", "Start companion service", "Establish secure tunnel", "Create virtual adapter", "Configure routes and DNS", "Verify internet access" };
         for (int i = 0; i < titles.Length; i++) Stages.Add(new StageRow { Title = titles[i], Detail = det[i], State = ItemState.Ok, Skipped = i == 3 });
-        UpdateAvailable = true; Raise(nameof(UpdateBanner));
+        UpdateAvailable = true;
+        if (Environment.GetCommandLineArgs().Contains("--demo-update")) { _update = new UpdateInfo(new UpdateManifest { Version = "2.2.0" }, new Version(2, 2, 0), new Uri("https://github.com/")); UpdateBusy = true; SetUpdatePhase("Downloading", "42%", 0.42, false); }
+        Raise(nameof(UpdateBanner));
         ShowStages = true; ShowAdminBanner = false;
         Checklist.Clear();
         foreach (var (t, h) in new[] { ("ADB is available", "Bundled with CiciPDA"), ("Connect the phone (USB, or ADB over Wi-Fi)", "1 device(s) seen by ADB"), ("Enable USB debugging and allow this computer", "Authorized: Pixel 7"), ("Administrator rights", "Running elevated"), ("Tunnel components present", "Wintun, tun2socks and phone helper found") })

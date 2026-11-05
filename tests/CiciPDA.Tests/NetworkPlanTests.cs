@@ -384,3 +384,40 @@ public class StaleAdapterTests
         Assert.Fail("WinNet.cs not found");
     }
 }
+
+
+public class UpdateButtonStateTests
+{
+    static string Read(params string[] parts)
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(new[] { d.FullName }.Concat(parts).ToArray());
+            if (File.Exists(f)) return File.ReadAllText(f);
+        }
+        throw new FileNotFoundException(string.Join("/", parts));
+    }
+
+    [Fact]
+    public void HeaderUpdateButton_IsDisabledWhileBusy_AndShowsProgress()
+    {
+        var xaml = Read("src", "app", "MainWindow.xaml");
+        int a = xaml.IndexOf("Command=\"{Binding InstallUpdate}\"");
+        Assert.True(a > 0);
+        var tag = xaml[(xaml.LastIndexOf("<Button", a))..(xaml.IndexOf('>', a) + 1)];
+        Assert.Contains("IsEnabled=\"{Binding UpdateBusy", tag);                        // cannot be pressed again while an update runs
+        Assert.Contains("<ProgressBar", xaml); Assert.Contains("Binding UpdateProgress", xaml); Assert.Contains("Binding UpdateChip", xaml);
+    }
+
+    [Fact]
+    public void InstallUpdate_IgnoresSecondClicks_AndResetsAfterFailure()
+    {
+        var vm = Read("src", "app", "ShellViewModel.cs");
+        int a = vm.IndexOf("async Task OnInstallUpdate");
+        var body = vm[a..vm.IndexOf("bool _demo;", a)];
+        Assert.Contains("if (_update == null || UpdateBusy) return;", body);
+        Assert.Contains("UpdateBusy = true;", body);
+        Assert.Contains("catch", body); Assert.Contains("UpdateBusy = false;", body);      // user can retry after an error
+        foreach (var phase in new[] { "Downloading", "Verifying", "Installing" }) Assert.Contains(phase, body);
+    }
+}

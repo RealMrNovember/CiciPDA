@@ -74,19 +74,28 @@
                         </StackPanel>
                     </Border>
                     <!-- The header is the window's drag area (WindowChrome caption). Controls in it only receive clicks when marked IsHitTestVisibleInChrome. -->
-                    <Button WindowChrome.IsHitTestVisibleInChrome="True" Command="{Binding InstallUpdate}" Margin="10,0,0,0" Cursor="Hand" ToolTip="Download and install the update" AutomationProperties.Name="Install update" Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVis}}">
+                    <Button WindowChrome.IsHitTestVisibleInChrome="True" Command="{Binding InstallUpdate}" IsEnabled="{Binding UpdateBusy, Converter={x:Static local:InvertBool.Instance}}" Margin="10,0,0,0" Cursor="Hand" ToolTip="{Binding UpdateTooltip}" AutomationProperties.Name="Install update" Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVis}}">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="pill" CornerRadius="12" Background="{DynamicResource GreenGlow}" BorderBrush="{DynamicResource Green}" BorderThickness="1" Padding="12,3">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Path Style="{StaticResource Ico}" Data="{StaticResource IconDown}" Stroke="{DynamicResource Green}" Width="13" Height="13" StrokeThickness="2"/>
-                                        <TextBlock Text="{Binding UpdateBanner}" Foreground="{DynamicResource Green}" FontSize="12" VerticalAlignment="Center" Margin="6,0,10,0"/>
-                                        <Border Background="{DynamicResource Green}" CornerRadius="9" Padding="10,1"><TextBlock Text="Update" Foreground="{DynamicResource OnAccent}" FontSize="11.5" FontWeight="SemiBold"/></Border>
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Style="{StaticResource Ico}" Data="{StaticResource IconDown}" Stroke="{DynamicResource Green}" Width="13" Height="13" StrokeThickness="2"/>
+                                            <TextBlock Text="{Binding UpdateBanner}" Foreground="{DynamicResource Green}" FontSize="12" VerticalAlignment="Center" Margin="6,0,10,0"/>
+                                            <Border x:Name="chip" Background="{DynamicResource Green}" CornerRadius="9" Padding="10,1" MinWidth="52"><TextBlock Text="{Binding UpdateChip}" Foreground="{DynamicResource OnAccent}" FontSize="11.5" FontWeight="SemiBold" HorizontalAlignment="Center"/></Border>
+                                        </StackPanel>
+                                        <ProgressBar Height="3" Margin="0,3,0,0" Minimum="0" Maximum="1" Value="{Binding UpdateProgress, Mode=OneWay}" IsIndeterminate="{Binding UpdateIndeterminate}" Foreground="{DynamicResource Green}" Background="#2619E08B" BorderThickness="0" Visibility="{Binding UpdateBusy, Converter={StaticResource BoolVis}}"/>
                                     </StackPanel>
                                 </Border>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="pill" Property="Background" Value="#3319E08B"/></Trigger>
                                     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="pill" Property="BorderBrush" Value="{DynamicResource Cyan}"/></Trigger>
+                                    <!-- busy: the button is disabled so it cannot be pressed again; the chip turns cyan and shows the progress -->
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter TargetName="chip" Property="Background" Value="{DynamicResource Cyan}"/>
+                                        <Setter TargetName="pill" Property="BorderBrush" Value="{DynamicResource Cyan}"/>
+                                        <Setter TargetName="pill" Property="Cursor" Value="Wait"/>
+                                    </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
