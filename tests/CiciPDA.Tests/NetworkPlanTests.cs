@@ -456,3 +456,65 @@ public class WifiSharingCardTests
         Assert.Contains("GeneratePassphrase", body);                  // a strong passphrase exists before the hotspot can start
     }
 }
+
+
+[Collection("AppPaths")]
+public class DnsPolicyTests
+{
+    [Fact]
+    public async Task NrptCmdlets_WeCall_ExistWithTheParametersWeUse()
+    {
+        var r = await ProcessRunner.RunAsync("powershell.exe", new[] { "-NoProfile", "-NonInteractive", "-Command",
+            "(Get-Command Add-DnsClientNrptRule -Syntax) + (Get-Command Remove-DnsClientNrptRule -Syntax) + (Get-Command Get-DnsClientNrptRule -Syntax)" }, TimeSpan.FromSeconds(30));
+        foreach (var p in new[] { "-Namespace", "-NameServers", "-DisplayName", "-Comment", "-Force" }) Assert.Contains(p, r.Combined);
+    }
+
+    [Fact]
+    public void Scripts_OnlyTouchTheRuleNamedCiciPDA_AndTakeServersFromTheEnvironment()
+    {
+        Assert.Contains("DisplayName -eq 'CiciPDA'", DnsPolicy.RemoveScript);                // never removes anybody else's rule
+        Assert.Contains("-Namespace '.'", DnsPolicy.AddScript);
+        Assert.Contains("$env:CICI_DNS", DnsPolicy.AddScript);                               // no server text is spliced into the script
+        Assert.DoesNotContain("Remove-DnsClientNrptRule -Name *", DnsPolicy.RemoveScript);
+    }
+
+    [Fact]
+    public async Task Add_RejectsInvalidServers_WithoutRunningAnything()
+    {
+        var (ok, detail) = await DnsPolicy.AddAsync(new[] { "1.1.1.1; Remove-Item C:\\ -Recurse" });
+        Assert.False(ok); Assert.Contains("invalid", detail);
+    }
+
+    [Fact]
+    public async Task RuleExists_CanBeQueriedWithoutAdmin()
+    {
+        // read-only query: must not throw; on this PC there is normally no CiciPDA rule
+        _ = await DnsPolicy.RuleExistsAsync();
+    }
+
+    [Fact]
+    public void Journal_RemembersTheRule_SoCrashRecoveryRemovesIt()
+    {
+        AppPaths.DataDir = Path.Combine(Path.GetTempPath(), "cici-nrpt-" + Guid.NewGuid());
+        var j = new RecoveryJournal(); j.State.NrptActive = true; j.Save();
+        Assert.True(new RecoveryJournal().State.NrptActive);
+        Assert.False(new RecoveryJournal().State.IsEmpty);
+        j.Reset();
+    }
+
+    [Fact]
+    public void Disconnect_RemovesThePolicyFirst_AndRollbackChecksIt()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(d.FullName, "src", "core", "WinNet.cs");
+            if (!File.Exists(f)) continue;
+            var s = File.ReadAllText(f);
+            int stop = s.IndexOf("public async Task StopAsync()");
+            Assert.True(s.IndexOf("DnsPolicy.RemoveAsync()", stop) < s.IndexOf("StopGracefullyAsync", stop));
+            Assert.Contains("the CiciPDA DNS policy rule is still present", s);
+            return;
+        }
+        Assert.Fail("WinNet.cs not found");
+    }
+}

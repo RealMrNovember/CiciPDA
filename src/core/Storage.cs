@@ -24,6 +24,7 @@ public sealed class AppSettings
     public string DnsSecondary { get; set; } = "1.0.0.1";
     public int Mtu { get; set; } = 1400;
     public bool Ipv6LeakProtection { get; set; } = true;
+    public bool ForceDnsThroughTunnel { get; set; } = true;     // NRPT catch-all rule: only the tunnel's DNS servers answer while connected
     public bool UseCompanion { get; set; } = true;            // install/use the signed Android companion app (recommended)
     public bool AutoUpdateCompanion { get; set; } = true;     // check the signed release channel for a newer companion
     public bool AllowLegacyFallback { get; set; }              // fall back to the no-install shell helper if the APK cannot be installed

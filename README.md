@@ -62,6 +62,10 @@ Settings, history and logs live per user in `%LocalAppData%\CiciByte\CiciPDA`. U
 
 CiciPDA checks the signed release channel shortly after start and every six hours (toggle in **Settings**), and the **refresh button in the header** checks on demand. When a new version exists a green **Update** pill appears in the header. Press it once: it shows the download percentage with a progress bar, then *Verifying* and *Installing*, and is disabled meanwhile so it cannot be pressed twice. The installer is downloaded only from GitHub, verified against a signed SHA-256, and run after you confirm — your connection is closed and your network settings restored first, and CiciPDA restarts afterwards (with the usual UAC prompt). The Android companion is updated the same way (signed metadata → hash → pinned signer certificate → Android's own signature check).
 
+## What's new
+
+See [CHANGELOG.md](CHANGELOG.md). Highlights of 2.2.0: **DNS fix** (names are resolved only through the tunnel while connected), a visible **Wi-Fi sharing** card, an **Update** button that shows progress and a header **Check for updates** button.
+
 ## Platform support
 
 | Platform | Status |
@@ -124,7 +128,7 @@ Details: [protocol and limits](docs/PROTOCOL.md) · [Android companion & OEM not
 
 - Not a full layer-3 VPN and **not WireGuard**: TCP and UDP datagrams are relayed (Windows DNS is ordinary UDP/53 sent through the phone to the DNS servers in Settings); ICMP (ping) is not carried; IP fragments are dropped. IPv6 is routed into the tunnel only when leak protection is on and works only if the phone's network has IPv6. iPhone and hotspot-join modes are not encrypted by CiciPDA.
 - Android may stop background apps on aggressive battery managers; CiciPDA detects it and reconnects. See the [OEM notes](docs/ANDROID_COMPANION.md).
-- **Not validated end to end on hardware yet.** On a real Android 16 phone the device detection, authorization, signed companion install, foreground service and encrypted channel have run, and the Windows virtual adapter and network configuration were created; the final internet verification (DNS through the phone) has **not** passed yet, so Wi-Fi sharing has never actually started. The automated suite (104 tests, including the real Java relay and the real bundled `tun2socks.exe`/`netsh` command lines) cannot replace it; the checklist is in [docs/HARDWARE_TEST_PLAN.md](docs/HARDWARE_TEST_PLAN.md) and the honest status is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+- **Not validated end to end on hardware yet.** On a real Android 16 phone the device detection, authorization, signed companion install, foreground service and encrypted channel have run, and the Windows virtual adapter and network configuration were created; the final internet verification (DNS through the phone) has **not** passed yet, so Wi-Fi sharing has never actually started. The automated suite (110 tests, including the real Java relay and the real bundled `tun2socks.exe`/`netsh` command lines) cannot replace it; the checklist is in [docs/HARDWARE_TEST_PLAN.md](docs/HARDWARE_TEST_PLAN.md) and the honest status is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Build from source
 

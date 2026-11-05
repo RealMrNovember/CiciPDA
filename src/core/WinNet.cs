@@ -62,7 +62,8 @@ public sealed class JournalState
     public bool HotspotActive { get; set; }
     public string? HotspotAdapter { get; set; }
     public string? HotspotSsid { get; set; }
-    public bool IsEmpty => Tun2SocksPid == 0 && ForwardPort == 0 && BypassRoutes.Count == 0 && !HotspotActive;
+    public bool NrptActive { get; set; }
+    public bool IsEmpty => Tun2SocksPid == 0 && ForwardPort == 0 && BypassRoutes.Count == 0 && !HotspotActive && !NrptActive;
 }
 public sealed record BypassRoute(string Prefix, int IfIndex);
 
@@ -88,6 +89,7 @@ public sealed class RecoveryJournal
             await WinNet.Netsh(NetshPlan.DeleteBypass(r.Prefix, r.IfIndex));
         if (s.ForwardPort > 0 && s.AdbSerial != null) await adb.RemoveForwardAsync(s.AdbSerial, s.ForwardPort);
         if (s.HotspotActive) await new HotspotService().RecoverAsync(s.HotspotAdapter, s.HotspotSsid);
+        if (s.NrptActive) { await DnsPolicy.RemoveAsync(); Log.Info("recovery", "Removed the DNS policy rule left by a previous session."); }
         Reset();
     }
 }
@@ -105,6 +107,7 @@ public sealed class TunnelNetwork : IDisposable
     public bool IsRunning => _t2s is { HasExited: false };
     public string? LastError { get; private set; }
     volatile bool volatile_engineUp;
+    bool _nrpt;
     /// <summary>True only if the IPv6 address AND both IPv6 half-routes were really installed.</summary>
     public bool Ipv6Protected { get; private set; }
     public string RollbackReport { get; private set; } = "";
@@ -184,6 +187,18 @@ public sealed class TunnelNetwork : IDisposable
         Log.Ok("dns", $"DNS set to {s.DnsPrimary}{(string.IsNullOrWhiteSpace(s.DnsSecondary) ? "" : ", " + s.DnsSecondary)} (resolved through the phone).");
         Log.Ok("route", "Default traffic now routed through the tunnel (0.0.0.0/1 + 128.0.0.0/1).");
 
+        if (s.ForceDnsThroughTunnel)
+        {
+            // Windows sends every DNS query to ALL adapters' servers at once and accepts the first answer, so an empty or failing answer from
+            // another adapter ("requested name is valid, but no data of the requested type was found") defeats the tunnel's DNS.
+            // A catch-all Name Resolution Policy rule makes Windows ask only the tunnel's servers. Removed on disconnect and by crash recovery.
+            _journal.State.NrptActive = true; _journal.Save();                  // journal first
+            var servers = new[] { s.DnsPrimary, s.DnsSecondary }.Where(x => !string.IsNullOrWhiteSpace(x));
+            var (ok, detail) = await DnsPolicy.AddAsync(servers);
+            if (ok) { _nrpt = true; Log.Ok("dns", "All DNS queries are now answered only by " + string.Join(", ", servers) + " through the tunnel (policy rule \"CiciPDA\")."); }
+            else { _journal.State.NrptActive = false; _journal.Save(); Log.Warn("dns", "Could not force DNS through the tunnel; other adapters may still answer name lookups: " + detail); }
+        }
+
         if (s.Ipv6LeakProtection)
         {
             // Send IPv6 into the tunnel too so it cannot bypass it; the phone side may not have IPv6, in which case apps fall back to IPv4.
@@ -206,6 +221,7 @@ public sealed class TunnelNetwork : IDisposable
 
     public async Task StopAsync()
     {
+        if (_nrpt) { await DnsPolicy.RemoveAsync(); _nrpt = false; _journal.State.NrptActive = false; _journal.Save(); }   // first: names resolve normally again at once
         var removed = _bypass.ToList();
         foreach (var b in removed)
         {
@@ -405,6 +421,7 @@ public static class RollbackCheck
                 var again = await WinNet.Netsh("interface", "ipv4", "show", "route");
                 if (RouteListed(again.Stdout, b.Prefix, b.IfIndex)) problems.Add($"route {b.Prefix} (interface {b.IfIndex}) is still present");
             }
+        if (await DnsPolicy.RuleExistsAsync()) { await DnsPolicy.RemoveAsync(); if (await DnsPolicy.RuleExistsAsync()) problems.Add("the CiciPDA DNS policy rule is still present"); }
         int best = WinNet.BestInterfaceFor(System.Net.IPAddress.Parse("1.1.1.1"));
         var ni = WinNet.FindByIndex(best);
         if (ni?.Name == TunnelNetwork.AdapterName) problems.Add("internet traffic would still be routed into the CiciPDA adapter");
@@ -431,5 +448,40 @@ public static class Tun2SocksLog
             if (msg.Length > 0) return msg.Length > 240 ? msg[..240] : msg;
         }
         return "no details were reported.";
+    }
+}
+
+
+/// <summary>
+/// Name Resolution Policy Table (NRPT) catch-all rule, managed through the DnsClient cmdlets (a supported Windows API, not hand-edited registry).
+/// While the tunnel is up, "." (every name) is resolved only by the tunnel's DNS servers. The rule is named "CiciPDA" so only our own rule is ever removed.
+/// </summary>
+public static class DnsPolicy
+{
+    public const string RuleName = "CiciPDA";
+
+    // Server addresses travel in an environment variable, never inside the script text.
+    public const string AddScript = "$s = $env:CICI_DNS -split ','; Add-DnsClientNrptRule -Namespace '.' -NameServers $s -DisplayName 'CiciPDA' -Comment 'Created by CiciPDA; removed when it disconnects' | Out-Null; Clear-DnsClientCache";
+    public const string RemoveScript = "Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq 'CiciPDA' } | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }; Clear-DnsClientCache";
+    public const string ExistsScript = "if (Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq 'CiciPDA' }) { 'YES' } else { 'NO' }";
+
+    static Task<ProcResult> Ps(string script, IDictionary<string, string>? env = null) =>
+        ProcessRunner.RunAsync("powershell.exe", new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script }, TimeSpan.FromSeconds(30), env: env);
+
+    public static async Task<(bool ok, string detail)> AddAsync(IEnumerable<string> servers)
+    {
+        var list = servers.ToList();
+        if (list.Count == 0 || list.Any(x => !System.Net.IPAddress.TryParse(x, out _))) return (false, "invalid DNS server address");
+        await RemoveAsync();                                                       // never stack duplicate rules
+        var r = await Ps(AddScript, new Dictionary<string, string> { ["CICI_DNS"] = string.Join(",", list) });
+        return r.Ok ? (true, "") : (false, r.Combined.Length > 200 ? r.Combined[..200] : r.Combined);
+    }
+
+    public static async Task RemoveAsync() => await Ps(RemoveScript);
+
+    public static async Task<bool> RuleExistsAsync()
+    {
+        var r = await Ps(ExistsScript);
+        return r.Ok && r.Stdout.Contains("YES");
     }
 }

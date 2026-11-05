@@ -380,6 +380,7 @@ public sealed class ShellViewModel : Observable
         if (e.DnsPrimary != c.DnsPrimary || e.DnsSecondary != c.DnsSecondary) risky.Add("DNS servers");
         if (e.Mtu != c.Mtu) risky.Add("MTU");
         if (e.Ipv6LeakProtection != c.Ipv6LeakProtection) risky.Add("IPv6 routing");
+        if (e.ForceDnsThroughTunnel != c.ForceDnsThroughTunnel) risky.Add("DNS policy");
         if (e.ShareWifi && !c.ShareWifi) risky.Add("Wi-Fi sharing (starts a hotspot)");
         if (e.AdbPath != c.AdbPath) risky.Add("adb location");
         if (risky.Count > 0 && !Dialogs.Confirm("Apply network changes?", "These settings change how CiciPDA configures Windows networking: " + string.Join(", ", risky) + ". They take effect on the next connection.", "Apply", true)) return;

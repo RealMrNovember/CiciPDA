@@ -8,7 +8,7 @@
     <AssemblyName>CiciPDA</AssemblyName>
     <RootNamespace>CiciPDA.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>2.1.9</Version>
+    <Version>2.2.0</Version>
     <Company>CiciByte Technology, Inc.</Company>
     <Authors>CiciByte Technology, Inc.</Authors>
     <Product>CiciPDA</Product>

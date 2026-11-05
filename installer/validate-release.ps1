@@ -4,7 +4,7 @@
 #   3. the installer is run (per-user, silent, into a temp folder), every file is checked inside the INSTALLED copy
 #      (adb hash must equal third_party\adb), then the uninstaller is run and must remove the folder
 # Exit code 0 only if everything passes. Usage: validate-release.ps1 [-Version 2.1.0]
-param([string]$Version = '2.1.9')
+param([string]$Version = '2.2.0')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $art = Join-Path $root 'artifacts'

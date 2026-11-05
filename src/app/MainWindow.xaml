@@ -571,6 +571,7 @@
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="200"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="DNS servers (primary / secondary)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.DnsPrimary}"/><TextBox Grid.Column="2" Text="{Binding Edit.DnsSecondary}" Margin="8,0,0,0"/></Grid>
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBlock Text="Adapter MTU (576–1500)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.Mtu}"/></Grid>
                                 <CheckBox Content="IPv6 leak protection (route IPv6 into the tunnel)" IsChecked="{Binding Edit.Ipv6LeakProtection}" Margin="0,7"/>
+                                <CheckBox Content="Resolve all names only through the tunnel (adds a temporary DNS policy rule; recommended)" IsChecked="{Binding Edit.ForceDnsThroughTunnel}" Margin="0,7"/>
                                 <CheckBox Content="Install and use the signed Android companion app (recommended)" IsChecked="{Binding Edit.UseCompanion}" Margin="0,7"/>
                                 <CheckBox Content="Check the signed release channel for companion updates" IsChecked="{Binding Edit.AutoUpdateCompanion}" Margin="0,7"/>
                                 <CheckBox Content="If the companion cannot be installed, fall back to the no-install shell helper" IsChecked="{Binding Edit.AllowLegacyFallback}" Margin="0,7"/>
@@ -612,6 +613,12 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource EqVis}, ConverterParameter=Help}">
                     <StackPanel Margin="24,20" MaxWidth="860" HorizontalAlignment="Left">
                         <TextBlock Text="{Binding L[nav.help]}" Style="{StaticResource H1}" Margin="0,0,0,14"/>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12" BorderBrush="{DynamicResource Green}">
+                            <StackPanel>
+                                <TextBlock Text="WHAT'S NEW IN 2.2.0" Style="{StaticResource SectionTitle}" Foreground="{DynamicResource Green}"/>
+                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" LineHeight="20" Text="• DNS fix: while connected, Windows resolves names only through the tunnel's DNS servers (a temporary policy rule, removed on disconnect). Other adapters can no longer answer with an empty result and break the internet checks.&#10;• Wi-Fi sharing card on the Connect page: switch, network name, masked password with Show/Copy, live state, connected devices, Start/Stop.&#10;• The header Update button shows download progress and cannot be pressed twice; new Check for updates button.&#10;• A failed connection no longer blocks the next one."/>
+                            </StackPanel>
+                        </Border>
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
                                 <TextBlock Text="HOW IT WORKS" Style="{StaticResource SectionTitle}"/>
@@ -627,7 +634,7 @@
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
                                 <TextBlock Text="KNOWN LIMITATIONS" Style="{StaticResource SectionTitle}"/>
-                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" LineHeight="20" Style="{StaticResource MutedText}" Text="• The tunnel carries TCP and DNS. Other UDP (for example QUIC, voice calls) is not carried and is counted as dropped; browsers fall back to TCP.&#10;• ICMP ping to remote hosts does not traverse the tunnel.&#10;• iPhone and Android-hotspot modes verify and monitor the connection Windows already has; they create no tunnel.&#10;• This is not WireGuard. Wi-Fi sharing from the PC is experimental."/>
+                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" LineHeight="20" Style="{StaticResource MutedText}" Text="• The tunnel carries TCP and UDP datagrams (DNS, QUIC, voice); IP fragments and datagrams over about 14.9 KB are dropped.&#10;• ICMP ping to remote hosts does not traverse the tunnel.&#10;• iPhone and Android-hotspot modes verify and monitor the connection Windows already has; they create no tunnel.&#10;• This is not WireGuard and not a full layer-3 VPN. Wi-Fi sharing from the PC is experimental and has not been verified on hardware yet."/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}">
