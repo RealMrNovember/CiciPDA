@@ -15,6 +15,7 @@ public static class Log
     static readonly List<ActivityEvent> Events = new();
     static readonly ConcurrentDictionary<string, byte> Secrets = new();
     static string? _file;
+    static bool _fileErrorShown;
 
     public static Severity MinFileLevel { get; set; } = Severity.Info;
     public static event Action<ActivityEvent>? Written;
@@ -51,6 +52,12 @@ public static class Log
             if (_file != null && sev >= MinFileLevel)
             {
                 try { File.AppendAllText(_file, $"{ev.Time:yyyy-MM-dd HH:mm:ss.fff} [{sev}] {source}: {ev.Message}{Environment.NewLine}", Encoding.UTF8); }
+                catch (Exception ex) when (!_fileErrorShown)
+                {
+                    // Never silently lose the log file: tell the user once (Activity page) why it is not being written.
+                    _fileErrorShown = true;
+                    Events.Add(new ActivityEvent(DateTimeOffset.Now, Severity.Warning, "log", "The log file could not be written (" + ex.GetType().Name + ": " + ex.Message + "). Events are still shown here."));
+                }
                 catch { }
             }
         }

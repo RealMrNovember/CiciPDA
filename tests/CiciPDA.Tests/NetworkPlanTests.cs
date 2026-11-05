@@ -376,7 +376,8 @@ public class StaleAdapterTests
             var f = Path.Combine(d.FullName, "src", "core", "WinNet.cs");
             if (!File.Exists(f)) continue;
             var s = File.ReadAllText(f);
-            Assert.Contains("RemoveAdapterAsync(AdapterName)", s);
+            Assert.Contains("reused = true", s.Replace("reusedAdapter = true", "reused = true"));   // leftover adapter is taken over, not an error
+            Assert.DoesNotContain("could not be removed", s);
             Assert.DoesNotContain("Close it and retry.", s);
             return;
         }

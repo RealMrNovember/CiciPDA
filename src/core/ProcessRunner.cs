@@ -77,5 +77,47 @@ public sealed class ManagedProcess : IDisposable
     public async Task WriteLineAsync(string s) { await _p.StandardInput.WriteLineAsync(s); await _p.StandardInput.FlushAsync(); }
     public Task WaitExitAsync(CancellationToken ct = default) => _p.WaitForExitAsync(ct);
     public void Kill() { try { if (!_p.HasExited) _p.Kill(true); } catch { } }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool AttachConsole(uint pid);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool FreeConsole();
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+    static readonly object ConsoleGate = new();
+
+    /// <summary>
+    /// Asks a console child process to shut down by sending it Ctrl+Break (Go programs such as tun2socks treat it as an interrupt), so it can close its Wintun adapter
+    /// itself. A hard kill leaves the adapter behind for minutes and blocks the next connection. Falls back to Kill after the timeout.
+    /// Returns true if the process exited on its own.
+    /// </summary>
+    public async Task<bool> StopGracefullyAsync(int timeoutMs = 5000)
+    {
+        if (HasExited) return true;
+        // If this process has a console (e.g. started from a terminal) the child may share it and a console control event would reach the
+        // terminal and its other programs. Only do the graceful stop from a console-less GUI process, which gets the child its own hidden console.
+        if (GetConsoleWindow() != IntPtr.Zero) { Kill(); return false; }
+        bool sent = false;
+        lock (ConsoleGate)                                   // the console attach/detach dance is process-wide
+        {
+            try
+            {
+                FreeConsole();                               // a GUI app normally has none; detach if it does
+                if (AttachConsole((uint)_p.Id))
+                {
+                    SetConsoleCtrlHandler(IntPtr.Zero, true);   // our own process must ignore the event it is about to send
+                    // CTRL_BREAK_EVENT (1), not CTRL_C: a parent that ignores Ctrl+C makes children inherit "ignore", but Ctrl+Break cannot be disabled that way.
+                    // Go programs such as tun2socks map both to SIGINT and shut down cleanly.
+                    sent = GenerateConsoleCtrlEvent(1 /* CTRL_BREAK_EVENT */, 0);
+                }
+            }
+            catch { sent = false; }
+        }
+        bool exited = false;
+        if (sent)
+            try { using var cts = new CancellationTokenSource(timeoutMs); await _p.WaitForExitAsync(cts.Token); exited = true; } catch (OperationCanceledException) { }
+        lock (ConsoleGate) { try { SetConsoleCtrlHandler(IntPtr.Zero, false); FreeConsole(); } catch { } }
+        if (!exited) { Kill(); return false; }
+        return true;
+    }
     public void Dispose() { Kill(); _p.Dispose(); }
 }

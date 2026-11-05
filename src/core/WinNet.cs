@@ -39,7 +39,7 @@ public static class WinNet
     /// is killed or still shutting down the adapter can linger and block the next connection ("already exists"). Uses pnputil, which ships with Windows.
     /// Returns true when no adapter with that name remains.
     /// </summary>
-    public static async Task<bool> RemoveAdapterAsync(string name, int waitSeconds = 6)
+    public static async Task<bool> RemoveAdapterAsync(string name, int waitSeconds = 40)
     {
         if (FindByName(name) == null) return true;
         var script = "$a=Get-NetAdapter -IncludeHidden -Name $env:CICI_NAME -ErrorAction SilentlyContinue; if($a){ pnputil.exe /remove-device $a.PnPDeviceID | Out-Null }";
@@ -104,6 +104,7 @@ public sealed class TunnelNetwork : IDisposable
     public NetworkInterface? Interface => WinNet.FindByName(AdapterName);
     public bool IsRunning => _t2s is { HasExited: false };
     public string? LastError { get; private set; }
+    volatile bool volatile_engineUp;
     /// <summary>True only if the IPv6 address AND both IPv6 half-routes were really installed.</summary>
     public bool Ipv6Protected { get; private set; }
     public string RollbackReport { get; private set; } = "";
@@ -124,14 +125,14 @@ public sealed class TunnelNetwork : IDisposable
         if (!WinNet.IsElevated()) throw new InvalidOperationException("Administrator rights are required to create the virtual adapter.");
         if (!File.Exists(AppPaths.Tun2Socks)) throw new FileNotFoundException("tun2socks.exe is missing from the tools folder. Run fetch-tools.ps1.");
         if (!File.Exists(AppPaths.WintunDll)) throw new FileNotFoundException("wintun.dll is missing from the tools folder. Run fetch-tools.ps1.");
+        bool reusedAdapter = false;
         if (WinNet.FindByName(AdapterName) != null)
         {
             // Left over from a previous attempt (a killed tun2socks does not always remove its Wintun adapter, or removal is still in progress).
-            Log.Warn("adapter", $"A stale adapter named {AdapterName} exists; waiting for it to disappear, then removing it.");
-            for (int i = 0; i < 20 && WinNet.FindByName(AdapterName) != null; i++) await Task.Delay(250, ct);
-            if (!await WinNet.RemoveAdapterAsync(AdapterName))
-                throw new InvalidOperationException($"A stale network adapter named {AdapterName} could not be removed. Disable or uninstall it in Device Manager (Network adapters), then try again.");
-            Log.Ok("adapter", "Stale adapter removed.");
+            // Wintun re-opens an adapter that already has the requested name, so tun2socks can simply take it over. Refusing to start (or waiting
+            // minutes for Windows to remove it) is what made every attempt after a failed one fail.
+            Log.Warn("adapter", $"A leftover adapter named {AdapterName} exists from a previous session; tun2socks will reuse it.");
+            reusedAdapter = true;
         }
 
         // Where would traffic to the phone go today? Capture before we change routes so the transport never loops through the tunnel.
@@ -140,8 +141,9 @@ public sealed class TunnelNetwork : IDisposable
         Log.Info("tunnel", "Starting tun2socks (Wintun adapter + packet engine).");
         _t2s = new ManagedProcess(AppPaths.Tun2Socks, BuildTun2SocksArgs(socksPort), workDir: AppPaths.ToolsDir);
         var errs = new List<string>();
-        _t2s.OutLine += l => Log.Debug("tun2socks", l);
-        _t2s.ErrLine += l => { lock (errs) errs.Add(l); Log.Debug("tun2socks", l); };
+        volatile_engineUp = false;
+        _t2s.OutLine += l => { if (l.Contains("[STACK]")) volatile_engineUp = true; Log.Debug("tun2socks", l); };
+        _t2s.ErrLine += l => { if (l.Contains("[STACK]")) volatile_engineUp = true; lock (errs) errs.Add(l); Log.Debug("tun2socks", l); };
         _t2s.Start();
         _journal.State.Tun2SocksPid = _t2s.Id; _journal.Save();
 
@@ -155,7 +157,15 @@ public sealed class TunnelNetwork : IDisposable
         }
         if (ni == null) throw new TimeoutException("The Wintun adapter did not appear within 15 seconds.");
         IfIndex = WinNet.IndexOf(ni);
-        Log.Ok("adapter", $"Virtual adapter {AdapterName} created (interface {IfIndex}).");
+        // With a reused adapter the interface already exists before tun2socks has opened it: wait until the engine reports it is running.
+        for (int i = 0; i < 40 && !volatile_engineUp; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_t2s.HasExited) { string e; lock (errs) e = string.Join(" | ", errs.TakeLast(3)); throw new InvalidOperationException("The packet engine (tun2socks) stopped while starting: " + Tun2SocksLog.Summarize(e)); }
+            await Task.Delay(250, ct);
+        }
+        if (!volatile_engineUp) Log.Warn("tunnel", "tun2socks did not report that it is running within 10 s; continuing.");
+        Log.Ok("adapter", $"Virtual adapter {AdapterName} {(reusedAdapter ? "reused" : "created")} (interface {IfIndex}).");
         onAdapter?.Invoke();
 
         int idx = IfIndex;
@@ -205,10 +215,13 @@ public sealed class TunnelNetwork : IDisposable
         _bypass.Clear();
         if (_t2s != null)
         {
-            _t2s.Kill();   // removes the Wintun adapter, which removes its addresses, DNS and routes with it
+            // Ctrl+C first: tun2socks then closes (and thereby deletes) its own Wintun adapter, taking addresses, DNS and routes with it.
+            // A hard kill can leave the adapter behind for minutes.
+            bool graceful = await _t2s.StopGracefullyAsync(5000);
+            Log.Info("tunnel", graceful ? "tun2socks stopped gracefully." : "tun2socks had to be killed.");
             for (int i = 0; i < 20 && WinNet.FindByName(AdapterName) != null; i++) await Task.Delay(250);
             _t2s.Dispose(); _t2s = null;
-            if (WinNet.FindByName(AdapterName) != null) { Log.Warn("adapter", "The adapter outlived tun2socks; removing it explicitly."); await WinNet.RemoveAdapterAsync(AdapterName); }
+            if (WinNet.FindByName(AdapterName) != null) { Log.Warn("adapter", "The adapter outlived tun2socks; asking Windows to remove it (best effort)."); _ = WinNet.RemoveAdapterAsync(AdapterName, 30); }
             if (WinNet.FindByName(AdapterName) != null) Log.Warn("adapter", "Adapter is still present after stopping tun2socks.");
             else Log.Info("adapter", "Virtual adapter removed.");
         }
