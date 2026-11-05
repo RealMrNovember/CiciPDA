@@ -272,6 +272,22 @@ public static class Verifier
         return (ips.Length > 0, $"{host} → {string.Join(", ", ips.Take(2))}");
     });
 
+    /// <summary>
+    /// Right after the adapter and DNS servers change, the Windows DNS client may still use its old server list or a cached negative
+    /// answer. Flush it once (not a persistent change), then give the resolver a few attempts before calling DNS broken.
+    /// </summary>
+    public static async Task<CheckResult> DnsWithRetry(bool flushFirst, int attempts = 3, string host = "www.msftconnecttest.com")
+    {
+        if (flushFirst) await ProcessRunner.RunAsync("ipconfig.exe", new[] { "/flushdns" }, TimeSpan.FromSeconds(10));
+        CheckResult last = await Dns(host);
+        for (int i = 1; i < attempts && !last.Passed; i++)
+        {
+            await Task.Delay(2000);
+            last = await Dns(host);
+        }
+        return last;
+    }
+
     public static Task<CheckResult> Http() => Time("http", "HTTP reachability", true,
         "Plain HTTP did not return the expected content. The phone may have no data connection or a captive portal.", async () =>
     {

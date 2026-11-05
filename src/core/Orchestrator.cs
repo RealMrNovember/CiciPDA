@@ -426,7 +426,7 @@ public sealed class Orchestrator
         var results = new List<CheckResult>();
         results.Add(await Verifier.AdapterReady(ifIndex));        // local readiness (not evidence of internet access)
         results.Add(await Verifier.DefaultRoute(ifIndex));
-        results.Add(await Verifier.Dns());
+        results.Add(await Verifier.DnsWithRetry(flushFirst: tunnel));
         var http = Verifier.Http(); var https = Verifier.Https();
         results.AddRange(await Task.WhenAll(http, https));
         ct.ThrowIfCancellationRequested();
@@ -439,9 +439,33 @@ public sealed class Orchestrator
         // Local readiness (adapter, route) is NOT internet reachability: if DNS, HTTP and HTTPS all fail the connection is unusable
         // no matter how healthy the adapter looks, so the attempt fails instead of showing a green adapter.
         var inet = results.Where(r => r.Id is "dns" or "http" or "https").ToList();
-        if (inet.All(r => !r.Passed)) throw new InvalidOperationException("No internet access through this connection: " + inet[0].Detail + " " + (inet[0].Fix ?? ""));
+        if (inet.All(r => !r.Passed))
+        {
+            var diag = await IsolateFailureAsync(tunnel, results);
+            Log.Error("verify", "Isolation: " + diag);
+            throw new InvalidOperationException("No internet access through this connection: " + inet[0].Detail + " " + (inet[0].Fix ?? "") + " [" + diag + "]");
+        }
         Internet = req.All(r => r.Passed) ? NetState.Reachable : NetState.Limited;
         if (!req.All(r => r.Passed)) Log.Warn("verify", "Only part of the data path works; state will be Limited Connectivity.");
+    }
+
+    /// <summary>When every internet check fails, find out WHICH layer is broken instead of reporting a generic failure.</summary>
+    async Task<string> IsolateFailureAsync(bool tunnel, List<CheckResult> results)
+    {
+        var parts = new List<string>();
+        var tcpIp = await Verifier.TcpLatency("1.1.1.1", 443, TimeSpan.FromSeconds(5));          // no DNS involved
+        parts.Add(tcpIp != null ? $"TCP to 1.1.1.1:443 works ({tcpIp.Value.TotalMilliseconds:0} ms) so the TCP path is fine and name resolution is the problem"
+                                : "TCP to 1.1.1.1:443 FAILS so the TCP path through the connection is broken");
+        var udp = results.FirstOrDefault(r => r.Id == "udp");
+        if (udp != null) parts.Add("UDP DNS to the configured server " + (udp.Passed ? "works" : "FAILS (" + udp.Detail + ")"));
+        if (tunnel && _socks != null)
+            parts.Add($"relay: TCP connections {_socks.TotalConnections} (failed {_socks.FailedConnections}), UDP datagrams forwarded {_socks.UdpForwarded}, dropped {_socks.UdpDropped}, DNS queries seen {_socks.DnsQueries}");
+        if (tunnel && _net != null)
+        {
+            var ni = _net.Interface;
+            if (ni != null) { var st = ni.GetIPv4Statistics(); parts.Add($"adapter counters: sent {st.BytesSent} B, received {st.BytesReceived} B"); }
+        }
+        return string.Join("; ", parts) + ".";
     }
 
     void StartMonitoring(bool tunnel)

@@ -322,6 +322,7 @@ public sealed class SocksRelay : IDisposable
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
         // The association lives as long as the TCP control connection.
         var ctl = Task.Run(async () => { try { var b = new byte[1]; while (await ns.ReadAsync(b, linked.Token) > 0) { } } catch { } linked.Cancel(); });
+        Log.Debug("socks", $"UDP ASSOCIATE accepted, local UDP port {port}");
         AgentChannel? ch = null;
         IPEndPoint? client = null;
         Task? reader = null;
@@ -342,6 +343,7 @@ public sealed class SocksRelay : IDisposable
                 int dport = BinaryPrimitives.ReadUInt16BigEndian(frame.AsSpan(frame[0] == 4 ? 5 : 17));
                 if (dport == 53) Interlocked.Increment(ref _dnsQueries);
                 Interlocked.Increment(ref _udpForwarded);
+                if (_udpForwarded <= 5) Log.Debug("socks", $"UDP datagram #{_udpForwarded} from Windows to {(frame[0] == 4 ? new IPAddress(frame.AsSpan(1, 4)).ToString() : "IPv6")}:{dport} ({frame.Length} bytes)");
                 await ch.WriteAsync(frame, linked.Token);
                 Interlocked.Add(ref _bytesUp, frame.Length);
                 reader ??= Task.Run(() => UdpReturnLoop(ch, udp, () => client, linked.Token));
