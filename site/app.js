@@ -14,7 +14,8 @@
       ['heroVer', 'dlVer'].forEach(function (id) { var e = document.getElementById(id); if (e) e.textContent = 'v' + ver; });
       var mb = (asset.size / 1048576).toFixed(0) + ' MB';
       var hs = document.getElementById('heroSize'); if (hs) hs.textContent = mb;
-      var dm = document.getElementById('dlMeta'); if (dm) dm.textContent = 'Setup .exe · ' + mb + ' · v' + ver;
+      var tr = document.documentElement.lang === 'tr';
+      var dm = document.getElementById('dlMeta'); if (dm) dm.textContent = (tr ? 'Kurulum .exe · ' : 'Setup .exe · ') + mb + ' · v' + ver;
     })
     .catch(function () { /* keep the static links */ });
 })();

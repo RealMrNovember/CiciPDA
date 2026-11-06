@@ -79,7 +79,7 @@ Release assets are named per platform so ports can be added later without renami
 
 ## Website
 
-The project site is **[pda.cicibyte.com](https://pda.cicibyte.com)**, hosted on CiciByte's own server (source in [`site/`](site/), plain HTML/CSS/JS, no build step; just copy the folder to the web root). Its download button always resolves to the installer of the latest GitHub release.
+The project site is **[pda.cicibyte.com](https://pda.cicibyte.com)**, hosted on CiciByte's own server (source in [`site/`](site/), plain HTML/CSS/JS, no build step; just copy the folder to the web root). It is available in **English** and **Türkçe** ([pda.cicibyte.com/tr](https://pda.cicibyte.com/tr/)). Its download button always resolves to the installer of the latest GitHub release.
 
 ## Connection methods
 

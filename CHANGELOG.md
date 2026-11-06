@@ -1,7 +1,7 @@
 # Changelog
 
 ## Website
-- New project website at **pda.cicibyte.com** (source in `site/`) with a download button that follows the latest GitHub release; hosted on CiciByte's own server. No application change.
+- New project website at **pda.cicibyte.com** (source in `site/`) with a download button that follows the latest GitHub release; hosted on CiciByte's own server, in English and Turkish (`/tr/`). No application change.
 
 ## 3.0.0 - What's new (includes everything from 2.1.x - 2.2.x)
 

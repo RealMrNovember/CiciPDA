@@ -104,3 +104,6 @@ details p{color:var(--muted);margin:8px 0 4px}
   .hero{padding-top:44px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+.lang{color:var(--muted);text-decoration:none;font-size:.85rem;font-weight:700;border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-height:32px;display:inline-flex;align-items:center}
+.lang:hover{color:var(--g);border-color:var(--g)}
+@media (max-width:900px){.nav .lang{margin-left:auto}.nav .lang+.btn{margin-left:0}}
