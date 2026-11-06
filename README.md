@@ -42,7 +42,7 @@ Connects an Android phone over USB, installs and updates its own signed companio
     <td width="50%"><img src="docs/images/diagnostics.png" alt="Network Diagnostics"><br><sub><b>Network Diagnostics</b> — every check explains the fix</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/devices.png" alt="Devices"><br><sub><b>Devices</b> — connected and previously paired phones, trust status</sub></td>
+    <td width="50%"><img src="docs/images/devices.png" alt="Devices"><br><sub><b>Devices</b> — devices on your Wi-Fi hotspot (name, IP, MAC, your own names) plus connected and previously paired phones</sub></td>
     <td width="50%"><img src="docs/images/settings.png" alt="Settings"><br><sub><b>Settings</b> — dangerous network changes ask for confirmation</sub></td>
   </tr>
 </table>
@@ -64,7 +64,7 @@ CiciPDA checks the signed release channel shortly after start and every six hour
 
 ## What's new
 
-See [CHANGELOG.md](CHANGELOG.md). Highlights of 2.2.1: the app **no longer closes itself** on Connect/Disconnect, it **hides to the system tray** while connected, it **remembers its window position**, it can **release the PC's Wi-Fi** while sharing, and the Devices page lists and names the **devices on your hotspot**. Earlier: **DNS fix**, the **Wi-Fi sharing** card, an **Update** button with progress and **Check for updates**.
+See [CHANGELOG.md](CHANGELOG.md). Highlights of 3.0: the app **no longer closes itself** on Connect/Disconnect, it **hides to the system tray** while connected, it **remembers its window position**, it can **release the PC's Wi-Fi** while sharing, and the Devices page lists and names the **devices on your hotspot**. Earlier: **DNS fix**, the **Wi-Fi sharing** card, an **Update** button with progress and **Check for updates**.
 
 ## Platform support
 
@@ -106,6 +106,10 @@ Details: [protocol and limits](docs/PROTOCOL.md) · [Android companion & OEM not
 
 ## Features
 
+- **Runs in the system tray:** while a connection is active, the **X button hides CiciPDA to the tray** instead of closing it (tray menu: Open, Disconnect, Quit). Starting CiciPDA again brings the running window forward.
+- **Remembers where you put the window** (position, size, maximised) and never restores it off-screen.
+- **Wi-Fi handover:** your PC's Wi-Fi is released while the phone connection is used and rejoined afterwards (automatic when Wi-Fi sharing is on, or switch it on in Settings). Journaled, so a crash or restart rejoins it too.
+- **Devices on your hotspot** (Devices page): name, IP and MAC of every device that joined, how long it has been connected, names you choose, copy IP/MAC, and *Change password and disconnect all* (Windows Mobile Hotspot has no per-device block, so a new password is the supported way to remove devices).
 - **Wi-Fi sharing card** on the Connect page: on/off switch, network name, masked password with Show/Copy, live state (waiting for a verified connection → starting → active → device connected → device internet verified, or the exact reason it is unavailable), connected-device count and Start/Stop buttons
 - Connect · Live Monitor · Activity · Connection History · Devices · Network Diagnostics · Settings · Help
 - Real-time download/upload, session totals, latency, probe loss, uptime, phone signal and network type
@@ -128,7 +132,7 @@ Details: [protocol and limits](docs/PROTOCOL.md) · [Android companion & OEM not
 
 - Not a full layer-3 VPN and **not WireGuard**: TCP and UDP datagrams are relayed (Windows DNS is ordinary UDP/53 sent through the phone to the DNS servers in Settings); ICMP (ping) is not carried; IP fragments are dropped. IPv6 is routed into the tunnel only when leak protection is on and works only if the phone's network has IPv6. iPhone and hotspot-join modes are not encrypted by CiciPDA.
 - Android may stop background apps on aggressive battery managers; CiciPDA detects it and reconnects. See the [OEM notes](docs/ANDROID_COMPANION.md).
-- **Not validated end to end on hardware yet.** On a real Android 16 phone the device detection, authorization, signed companion install, foreground service and encrypted channel have run, and the Windows virtual adapter and network configuration were created; the final internet verification (DNS through the phone) has **not** passed yet, so Wi-Fi sharing has never actually started. The automated suite (110 tests, including the real Java relay and the real bundled `tun2socks.exe`/`netsh` command lines) cannot replace it; the checklist is in [docs/HARDWARE_TEST_PLAN.md](docs/HARDWARE_TEST_PLAN.md) and the honest status is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+- **Hardware status:** on a real Android 16 phone and a real Windows PC the connection, the verified internet access, Wi-Fi sharing and a second device joining the hotspot have been reported working by the project owner. A systematic run of the [hardware test plan](docs/HARDWARE_TEST_PLAN.md) (Windows 10 and 11, several phone vendors, iPhone, IPv6, QUIC, recovery cases) has **not** been completed yet. The automated suite (137 tests, including the real Java relay and the real bundled `tun2socks.exe`/`netsh` command lines) cannot replace it; the checklist is in [docs/HARDWARE_TEST_PLAN.md](docs/HARDWARE_TEST_PLAN.md) and the honest status is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Build from source
 

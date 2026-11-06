@@ -550,7 +550,9 @@ public sealed class ShellViewModel : Observable
 
     void SetUpdatePhase(string phase, string chip, double progress, bool indeterminate)
     {
+        bool phaseChanged = phase != _updPhase;
         _updPhase = phase; UpdateChip = chip; UpdateProgress = progress; UpdateIndeterminate = indeterminate; Raise(nameof(UpdateBanner));
+        if (phaseChanged && phase.Length > 0) { Notifier.Show(Severity.Info, $"{phase} CiciPDA {UpdateVersion}..."); Log.Info("update", $"{phase} CiciPDA {UpdateVersion}"); }
     }
     public string CurrentVersionText => AppUpdater.CurrentVersion.ToString();
 
@@ -627,6 +629,13 @@ public sealed class ShellViewModel : Observable
         var titles = new[] { "Detect phone", "Check USB debugging authorization", "Check Android companion", "Install / update companion", "Start companion service", "Establish secure tunnel", "Create virtual adapter", "Configure routes and DNS", "Verify internet access" };
         for (int i = 0; i < titles.Length; i++) Stages.Add(new StageRow { Title = titles[i], Detail = det[i], State = ItemState.Ok, Skipped = i == 3 });
         ShareStateText = "A connected device confirmed DNS and HTTPS. Sharing works."; ShareStateBrush = Theme.Brush("Green"); ShareClientsText = "1 device(s) connected"; ShowSharePassword = false;
+        DeviceRows.Clear(); KnownRows.Clear();
+        DeviceRows.Add(new DeviceRow { Serial = "DEMO-0000-SERIAL", Name = "Pixel 7", Transport = "USB", Connected = true, Trusted = true, Trust = "Authorized", Status = "In use", LastSeen = "now", Preferred = true });
+        Raise(nameof(HasDevices)); Raise(nameof(HasKnown));
+        SharedDevices.Clear();
+        SharedDevices.Add(new SharedDeviceRow { Name = "Mike's laptop", HostName = "DESKTOP-4F2K1", Ip = "192.168.137.12", Mac = "3C-22-FB-A1-07-5E", Since = "connected 6 min ago", HasAlias = true });
+        SharedDevices.Add(new SharedDeviceRow { Name = "Unknown device", HostName = "", Ip = "192.168.137.31", Mac = "9A-4B-10-C2-D8-77", Since = "connected just now" });
+        Raise(nameof(HasSharedDevices)); SharedDevicesHint = "";
         UpdateAvailable = true;
         if (Environment.GetCommandLineArgs().Contains("--demo-update")) { _update = new UpdateInfo(new UpdateManifest { Version = "2.2.0" }, new Version(2, 2, 0), new Uri("https://github.com/")); UpdateBusy = true; SetUpdatePhase("Downloading", "42%", 0.42, false); }
         Raise(nameof(UpdateBanner));
@@ -777,6 +786,7 @@ public sealed class ShellViewModel : Observable
 
     void RebuildDevices()
     {
+        if (_demo) return;                       // preview screenshots must never show the developer's real phone
         DeviceRows.Clear(); KnownRows.Clear();
         foreach (var d in Orch.Devices)
             DeviceRows.Add(new DeviceRow

@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.2.1 - What's new
+## 3.0.0 - What's new (includes everything from 2.1.x - 2.2.x)
 
 **Important fix: the app no longer closes itself**
 - In 2.1.7-2.2.0 pressing Connect (when the attempt failed) or Disconnect could close CiciPDA completely. Cause: stopping the packet engine sent a Ctrl+Break to its console, and CiciPDA was attached to that console and received it too. A real handler now absorbs it (verified with a GUI-process test harness).
