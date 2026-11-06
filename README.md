@@ -12,7 +12,7 @@ Connects an Android phone over USB, installs and updates its own signed companio
 ![Android](https://img.shields.io/badge/Android-7.0%2B-19E08B?style=flat-square&labelColor=0b0f14&logo=android&logoColor=19E08B)
 [![License](https://img.shields.io/badge/license-MIT-7B8CA1?style=flat-square&labelColor=0b0f14)](LICENSE)
 
-[**Download**](https://github.com/RealMrNovember/CiciPDA/releases/latest) · [cicibyte.com](https://cicibyte.com) · [Documentation](docs/DEVELOPMENT.md) · [☕ Buy me a coffee](https://buymeacoffee.com/MikeRoss)
+[**Download**](https://pda.cicibyte.com) · [pda.cicibyte.com](https://pda.cicibyte.com) · [cicibyte.com](https://cicibyte.com) · [Documentation](docs/DEVELOPMENT.md) · [☕ Buy me a coffee](https://buymeacoffee.com/MikeRoss)
 
 <br>
 
@@ -76,6 +76,10 @@ See [CHANGELOG.md](CHANGELOG.md). Highlights of 3.0: the app **no longer closes 
 | **macOS** | Not available — same reason |
 
 Release assets are named per platform so ports can be added later without renaming.
+
+## Website
+
+The project site is **[pda.cicibyte.com](https://pda.cicibyte.com)** (source in [`site/`](site/), plain HTML/CSS/JS, no build step). Its download button always resolves to the installer of the latest GitHub release. It is deployed to GitHub Pages by [`.github/workflows/pages.yml`](.github/workflows/pages.yml) whenever `site/` changes on `master`; the custom domain is the `site/CNAME` file plus a DNS `CNAME` record `pda` → `realmrnovember.github.io`.
 
 ## Connection methods
 

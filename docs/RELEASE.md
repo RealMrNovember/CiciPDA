@@ -38,3 +38,7 @@ All private material is in the git-ignored `release/` folder on the maintainer m
 * No Authenticode certificate: SmartScreen warns on first run.
 * Licence review items in `THIRD_PARTY.md` (tun2socks GPL-3.0 source offer, adb redistribution terms).
 * The in-app "Update" button has not been exercised end to end (needs a newer release than the installed one, plus UAC).
+
+## Website (pda.cicibyte.com)
+
+`site/` is deployed to GitHub Pages by `.github/workflows/pages.yml` on every push to `master` that touches it. Releases need no website change: `site/app.js` reads the latest release from the GitHub API and points the download button at the `*-windows-x64-Setup.exe` asset (falling back to the releases page). DNS: `CNAME pda -> realmrnovember.github.io`; repository Settings -> Pages must use "GitHub Actions" as the source with custom domain `pda.cicibyte.com` and "Enforce HTTPS".

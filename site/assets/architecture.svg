@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" width="960" height="360" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#19E08B"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#22D3EE"/></marker>
+  </defs>
+  <rect width="960" height="360" rx="14" fill="#0B0F14"/>
+  <text x="24" y="34" fill="#7B8CA1" font-size="12" font-weight="600" letter-spacing="1.5">WINDOWS PC</text>
+  <text x="672" y="34" fill="#7B8CA1" font-size="12" font-weight="600" letter-spacing="1.5">ANDROID PHONE</text>
+  <rect x="16" y="46" width="620" height="298" rx="12" fill="#0E141B" stroke="#1C2631"/>
+  <rect x="660" y="46" width="284" height="298" rx="12" fill="#0E141B" stroke="#1C2631"/>
+
+  <g fill="#121A23" stroke="#2A394A">
+    <rect x="32" y="66" width="588" height="50" rx="8"/>
+    <rect x="32" y="136" width="180" height="62" rx="8"/>
+    <rect x="224" y="136" width="180" height="62" rx="8"/>
+    <rect x="416" y="136" width="204" height="62" rx="8"/>
+    <rect x="32" y="222" width="180" height="62" rx="8"/>
+    <rect x="224" y="222" width="180" height="62" rx="8"/>
+    <rect x="416" y="222" width="204" height="62" rx="8"/>
+    <rect x="676" y="66" width="252" height="62" rx="8"/>
+    <rect x="676" y="148" width="252" height="76" rx="8"/>
+    <rect x="676" y="244" width="252" height="86" rx="8"/>
+  </g>
+  <g fill="#E7EEF5" font-size="13.5" font-weight="600">
+    <text x="48" y="96">CiciPDA UI + connection orchestrator (state machine, health, reconnect)</text>
+    <text x="48" y="162">Companion deployment</text>
+    <text x="240" y="162">Windows apps</text>
+    <text x="432" y="162">Verification</text>
+    <text x="48" y="248">Wintun adapter</text>
+    <text x="240" y="248">tun2socks</text>
+    <text x="432" y="248">SOCKS5 relay (TCP, UDP)</text>
+    <text x="692" y="92">Foreground service</text>
+    <text x="692" y="174">Relay (protocol v3)</text>
+    <text x="692" y="270">Phone's own network</text>
+  </g>
+  <g fill="#7B8CA1" font-size="11.5">
+    <text x="48" y="182">verify, install, update,</text><text x="48" y="196">start (signed APK)</text>
+    <text x="240" y="182">browsers, services</text><text x="240" y="196">use the adapter normally</text>
+    <text x="432" y="182">route, DNS, HTTP, HTTPS,</text><text x="432" y="196">Windows connectivity</text>
+    <text x="48" y="268">routes, DNS, MTU, rollback</text>
+    <text x="240" y="268">packets to SOCKS5</text>
+    <text x="432" y="268">AES-256-GCM framed channel</text>
+    <text x="692" y="112">started only over USB debugging</text>
+    <text x="692" y="194">TCP stream, UDP datagrams, status</text>
+    <text x="692" y="212">127.0.0.1 only</text>
+    <text x="692" y="290">mobile data / Wi-Fi / the phone's VPN</text>
+    <text x="692" y="308">Android 7.0+ (API 24)</text>
+  </g>
+  <g stroke="#22D3EE" stroke-width="2" fill="none" marker-end="url(#a)">
+    <path d="M212 253H224"/>
+    <path d="M404 253H416"/>
+  </g>
+  <path d="M620 253H648V186H676" stroke="url(#g)" stroke-width="3" fill="none" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text x="560" y="312" fill="#19E08B" font-size="11.5" font-weight="600">adb forward (USB)</text>
+  <path d="M802 224V244" stroke="#22D3EE" stroke-width="2" fill="none" marker-end="url(#a)"/>
+</svg>

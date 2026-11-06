@@ -1,5 +1,8 @@
 # Changelog
 
+## Website
+- New project website at **pda.cicibyte.com** (source in `site/`) with a download button that follows the latest GitHub release; deployed by GitHub Pages. No application change.
+
 ## 3.0.0 - What's new (includes everything from 2.1.x - 2.2.x)
 
 **Important fix: the app no longer closes itself**

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="CiciPDA logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101822"/>
+      <stop offset="1" stop-color="#070B10"/>
+    </linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#19E08B"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.47" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#19E08B" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#19E08B" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="8.5" y="8.5" width="239" height="239" rx="55.5" fill="none" stroke="#2A394A" stroke-width="1"/>
+  <circle cx="120" cy="128" r="104" fill="url(#glow)"/>
+  <!-- three signal arcs forming a "C", open towards the PC; solid node = the phone -->
+  <g fill="none" stroke="url(#g)" stroke-width="14" stroke-linecap="round">
+    <path d="M186.19 76.28A84 84 0 1 0 186.19 179.72" opacity="1"/>
+    <path d="M164.13 93.52A56 56 0 1 0 164.13 162.48" opacity=".82"/>
+    <path d="M142.06 110.76A28 28 0 1 0 142.06 145.24" opacity=".64"/>
+  </g>
+  <circle cx="120" cy="128" r="12" fill="url(#g)"/>
+</svg>

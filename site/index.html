@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CiciPDA — Your phone's internet, on Windows</title>
+<meta name="description" content="CiciPDA shares your Android phone's internet with your Windows PC over an encrypted USB or Wi-Fi tunnel, verifies it really works, and can share it onward as a Wi-Fi hotspot. Free download for Windows 10/11.">
+<meta name="theme-color" content="#070b10">
+<link rel="canonical" href="https://pda.cicibyte.com/">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta property="og:type" content="website">
+<meta property="og:title" content="CiciPDA — Your phone's internet, on Windows">
+<meta property="og:description" content="Encrypted phone-to-PC internet sharing with verified connectivity. Download for Windows.">
+<meta property="og:url" content="https://pda.cicibyte.com/">
+<meta property="og:image" content="https://pda.cicibyte.com/assets/connect.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"CiciPDA","operatingSystem":"Windows 10, Windows 11","applicationCategory":"UtilitiesApplication","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"CiciByte Technology, Inc.","url":"https://cicibyte.com"},"url":"https://pda.cicibyte.com/"}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="top">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" aria-label="CiciPDA home"><img src="assets/logo.svg" width="34" height="34" alt=""><span>Cici<b>PDA</b></span></a>
+    <nav aria-label="Main">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#security">Security</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-sm" href="#download" data-dl>Download</a>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero">
+  <div class="glow" aria-hidden="true"></div>
+  <div class="wrap hero-in">
+    <div class="hero-copy">
+      <p class="eyebrow">by CiciByte Technology, Inc.</p>
+      <h1>Your phone's internet,<br><span class="grad">on Windows.</span></h1>
+      <p class="lead">CiciPDA turns your Android phone's connection into a verified, encrypted internet link for your PC — over USB or Wi-Fi — and can share it onward as a Wi-Fi hotspot. No manual setup, no root.</p>
+      <div class="cta">
+        <a class="btn btn-lg" href="https://github.com/RealMrNovember/CiciPDA/releases/latest" data-dl id="heroDl">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14"/></svg>
+          Download for Windows <small id="heroVer"></small>
+        </a>
+        <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+      </div>
+      <p class="meta">Windows 10 / 11 · 64-bit · Free · <span id="heroSize"></span></p>
+    </div>
+    <figure class="shot">
+      <img src="assets/connect.png" width="1280" height="880" alt="CiciPDA Connect page showing a verified connection through a phone, with Wi-Fi sharing active">
+    </figure>
+  </div>
+</section>
+
+<section class="strip" aria-label="Highlights">
+  <div class="wrap strip-in">
+    <div><b>AES-256-GCM</b><span>encrypted channel</span></div>
+    <div><b>Verified</b><span>DNS, HTTP and HTTPS checked</span></div>
+    <div><b>Signed</b><span>updates and companion app</span></div>
+    <div><b>Self-healing</b><span>network restored on exit</span></div>
+  </div>
+</section>
+
+<section id="how" class="sec">
+  <div class="wrap">
+    <p class="eyebrow">How it works</p>
+    <h2>Three steps. Everything else is automatic.</h2>
+    <ol class="steps">
+      <li><span class="n">1</span><h3>Plug in or pair</h3><p>Connect your Android phone by USB (or ADB over Wi-Fi) and allow USB debugging once.</p></li>
+      <li><span class="n">2</span><h3>Press Connect</h3><p>CiciPDA installs its signed companion app, opens an encrypted channel and creates a virtual network adapter on Windows.</p></li>
+      <li><span class="n">3</span><h3>Browse — and share</h3><p>The connection is verified before it's called connected. Optionally share it to other devices as a Wi-Fi hotspot.</p></li>
+    </ol>
+    <figure class="arch"><img src="assets/architecture.svg" width="900" height="300" alt="Architecture: Windows apps go through the Wintun adapter and a local relay, over an encrypted ADB channel to the Android companion, then out through the phone's own connection" loading="lazy"></figure>
+  </div>
+</section>
+
+<section id="features" class="sec alt">
+  <div class="wrap">
+    <p class="eyebrow">Features</p>
+    <h2>Built to work the first time — and to clean up after itself.</h2>
+    <div class="grid">
+      <article class="card"><h3>Truthfully connected</h3><p>"Connected" appears only after local, DNS, HTTP and HTTPS checks pass through the phone. If something fails, you get the exact layer that broke.</p></article>
+      <article class="card"><h3>Zero-configuration</h3><p>Bundled ADB, Wintun and packet engine. The Android companion installs itself and is verified against a pinned signing certificate.</p></article>
+      <article class="card"><h3>Wi-Fi sharing</h3><p>Share the phone's internet to other devices through Windows Mobile Hotspot. See every device that joined — name, IP, MAC — give them names, and rotate the password to disconnect everyone.</p></article>
+      <article class="card"><h3>Wi-Fi handover</h3><p>If your PC is on Wi-Fi, CiciPDA releases it while the phone link is used and rejoins afterwards — even after a crash or restart.</p></article>
+      <article class="card"><h3>Lives in the tray</h3><p>Closing the window while connected hides CiciPDA to the system tray so the connection keeps running. The window remembers where you left it.</p></article>
+      <article class="card"><h3>Safe by design</h3><p>Every network change is journaled and rolled back on disconnect, crash or reboot. Diagnostics, live traffic and history are built in.</p></article>
+      <article class="card"><h3>Android and iPhone</h3><p>Phone VPN and USB modes for Android; Android hotspot and iPhone Personal Hotspot detected, verified and monitored.</p></article>
+      <article class="card"><h3>Automatic updates</h3><p>Updates are signed, checked against a pinned key and always ask before installing. Never a surprise.</p></article>
+    </div>
+  </div>
+</section>
+
+<section id="screens" class="sec">
+  <div class="wrap">
+    <p class="eyebrow">Inside the app</p>
+    <h2>A calm, readable control panel.</h2>
+    <div class="shots">
+      <figure><img src="assets/devices.png" width="1280" height="880" alt="Devices page listing devices on the Wi-Fi hotspot and paired phones" loading="lazy"><figcaption>Devices on your hotspot and paired phones</figcaption></figure>
+      <figure><img src="assets/monitor.png" width="1280" height="880" alt="Live monitor with traffic graphs" loading="lazy"><figcaption>Live monitor</figcaption></figure>
+      <figure><img src="assets/diagnostics.png" width="1280" height="880" alt="Network diagnostics results" loading="lazy"><figcaption>Network diagnostics</figcaption></figure>
+      <figure><img src="assets/settings.png" width="1280" height="880" alt="Settings page" loading="lazy"><figcaption>Settings</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="security" class="sec alt">
+  <div class="wrap two">
+    <div>
+      <p class="eyebrow">Security</p>
+      <h2>Your traffic stays between your PC and your phone.</h2>
+      <p>The tunnel is encrypted end to end with AES-256-GCM using a key that exists only for the session. There is no CiciPDA server: nothing is routed through us, and nothing is collected.</p>
+    </div>
+    <ul class="ticks">
+      <li>Session key is generated per connection and deleted on disconnect</li>
+      <li>Companion app signed with a pinned certificate</li>
+      <li>Update manifests signed with a pinned ECDSA key, downloaded over HTTPS from GitHub only</li>
+      <li>Open source, MIT licensed — read every line</li>
+      <li>No analytics, no accounts, no telemetry</li>
+    </ul>
+  </div>
+</section>
+
+<section id="download" class="sec dl">
+  <div class="wrap">
+    <p class="eyebrow">Download</p>
+    <h2>Get CiciPDA</h2>
+    <div class="platforms">
+      <article class="plat main">
+        <h3>Windows</h3>
+        <p>Windows 10 / 11, 64-bit. Installs to <code>Program Files\CiciByte\CiciPDA</code>, with Start menu and desktop shortcuts.</p>
+        <a class="btn btn-lg" href="https://github.com/RealMrNovember/CiciPDA/releases/latest" id="dlWin" data-dl>Download installer <small id="dlVer"></small></a>
+        <p class="meta" id="dlMeta">Setup .exe · signed update channel</p>
+      </article>
+      <article class="plat soon"><h3>Linux</h3><p>Not available yet.</p><span class="pill">Planned</span></article>
+      <article class="plat soon"><h3>macOS</h3><p>Not available yet.</p><span class="pill">Planned</span></article>
+    </div>
+    <p class="note">The installer is not yet Authenticode-signed, so Windows SmartScreen may show a warning on first run. Its SHA-256 is published with each release and the app verifies its own updates with a pinned key. <a href="https://github.com/RealMrNovember/CiciPDA/releases">All releases</a></p>
+  </div>
+</section>
+
+<section id="faq" class="sec">
+  <div class="wrap narrow">
+    <p class="eyebrow">FAQ</p>
+    <h2>Questions</h2>
+    <details><summary>Does it need root or a rooted phone?</summary><p>No. It uses USB debugging (ADB) and a small companion app that Android lets you install normally.</p></details>
+    <details><summary>Is it free?</summary><p>Yes. CiciPDA is free and open source under the MIT licence. If it helps you, you can <a href="https://buymeacoffee.com/MikeRoss">buy the developer a coffee</a>.</p></details>
+    <details><summary>Does it work with iPhone?</summary><p>For iPhone, CiciPDA detects, verifies and monitors the Personal Hotspot connection Windows already has. There is no CiciPDA tunnel or companion on iOS.</p></details>
+    <details><summary>Will my carrier allow it?</summary><p>CiciPDA uses your phone's normal connection and does not disguise tethering. Your plan's tethering terms still apply — check them with your carrier.</p></details>
+    <details><summary>What happens if the app crashes?</summary><p>Network changes are written to a recovery journal first. On the next start (or Disconnect), routes, DNS rules, the virtual adapter and your Wi-Fi connection are restored.</p></details>
+    <details><summary>How mature is it?</summary><p>It has been confirmed working on a real Android phone and Windows PC, and ships with an automated test suite. A systematic test across more Windows versions and phone brands is still in progress — please <a href="https://github.com/RealMrNovember/CiciPDA/issues">report issues</a>.</p></details>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="brand"><img src="assets/logo.svg" width="30" height="30" alt=""><span>Cici<b>PDA</b></span></div>
+    <p>© <span id="yr">2026</span> <a href="https://cicibyte.com">CiciByte Technology, Inc.</a> · MIT licensed</p>
+    <p class="links"><a href="https://github.com/RealMrNovember/CiciPDA">GitHub</a> · <a href="https://github.com/RealMrNovember/CiciPDA/releases">Releases</a> · <a href="https://github.com/RealMrNovember/CiciPDA/blob/master/CHANGELOG.md">Changelog</a> · <a href="https://buymeacoffee.com/MikeRoss">Buy me a coffee</a></p>
+  </div>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
