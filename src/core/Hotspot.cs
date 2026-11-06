@@ -80,7 +80,12 @@ if($r.Status.ToString() -ne 'Success'){ throw ('START:'+$r.Status+' '+$r.Additio
 if($null -eq $prof){ '{""state"":""NoProfile"",""clients"":0}'; exit 0 }
 $m=[Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($prof)
 $n=0; try{ $n=$m.ClientCount }catch{}
-(@{state=$m.TetheringOperationalState.ToString();clients=$n;max=$m.MaxClientCount}|ConvertTo-Json -Compress)
+# IPv4 neighbours by MAC (the hotspot hands out 192.168.137.x addresses)
+$neigh=@{}
+try{ Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.LinkLayerAddress -and $_.LinkLayerAddress -ne '00-00-00-00-00-00' -and $_.LinkLayerAddress -ne 'FF-FF-FF-FF-FF-FF' } | ForEach-Object { $neigh[($_.LinkLayerAddress -replace ':','-').ToUpper()] = $_.IPAddress } }catch{}
+$list=@()
+try{ foreach($c in $m.GetTetheringClients()){ $mac=($c.MacAddress -replace ':','-').ToUpper(); $name=''; try{ $name=[string]($c.HostNames | Select-Object -First 1).DisplayName }catch{}; $list += @{mac=$mac;name=$name;ip=[string]$neigh[$mac]} } }catch{}
+(@{state=$m.TetheringOperationalState.ToString();clients=$n;max=$m.MaxClientCount;list=$list}|ConvertTo-Json -Compress -Depth 4)
 ";
 
     const string StopScript = Pre + @"
@@ -103,6 +108,9 @@ if($env:CICI_PREV_SSID){
     public HotspotState State { get; private set; } = HotspotState.Unavailable;
     public string Detail { get; private set; } = "";
     public int ClientCount { get; private set; }
+    /// <summary>Devices currently joined to the hotspot (MAC, host name and IP as Windows reports them).</summary>
+    public IReadOnlyList<HotspotClient> Clients { get; private set; } = Array.Empty<HotspotClient>();
+    public HotspotDeviceStore Devices { get; } = new();
     public string? ProbeUrl { get; private set; }
     public string? UpstreamGuid { get; private set; }
     /// <summary>SSID CiciPDA configured; proves ownership during stop and crash recovery.</summary>
@@ -113,6 +121,13 @@ if($env:CICI_PREV_SSID){
 
     static Task<ProcResult> Ps(string script, IDictionary<string, string> env, int timeoutSec = 45) =>
         ProcessRunner.RunAsync("powershell.exe", new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script }, TimeSpan.FromSeconds(timeoutSec), env: env);
+
+    /// <summary>Read-only status query (state, client count, client list) for the connection profile of an adapter; used by Refresh and by tests.</summary>
+    public static async Task<string?> RawStatusAsync(string adapterGuid)
+    {
+        var r = await Ps(StatusScript, new Dictionary<string, string> { ["CICI_ADAPTER"] = adapterGuid }, 30);
+        return r.Ok ? r.Stdout.Trim() : null;
+    }
 
     /// <summary>GUID (Windows InterfaceGuid) of a network interface by name; used to select the upstream explicitly.</summary>
     public static string? AdapterGuid(string interfaceName)
@@ -233,6 +248,19 @@ if($env:CICI_PREV_SSID){
             using var d = JsonDocument.Parse(r.Stdout.Trim());
             var st = d.RootElement.GetProperty("state").GetString();
             ClientCount = d.RootElement.TryGetProperty("clients", out var c) ? c.GetInt32() : 0;
+            var found = new List<HotspotClient>();
+            if (d.RootElement.TryGetProperty("list", out var arr))
+            {
+                IEnumerable<JsonElement> items = arr.ValueKind == JsonValueKind.Array ? arr.EnumerateArray() : arr.ValueKind == JsonValueKind.Object ? new[] { arr } : Array.Empty<JsonElement>();
+                foreach (var it in items)
+                {
+                    var mac = it.TryGetProperty("mac", out var m1) ? m1.GetString() ?? "" : "";
+                    if (mac.Length == 0) continue;
+                    found.Add(new HotspotClient(mac, it.TryGetProperty("name", out var n1) ? n1.GetString() ?? "" : "", it.TryGetProperty("ip", out var i1) ? i1.GetString() ?? "" : ""));
+                }
+            }
+            Clients = found; if (found.Count > 0) ClientCount = found.Count;
+            Devices.Observe(found);
             if (st != "On") { State = HotspotState.Failed; Detail = "Windows turned the hotspot off (state: " + st + ")."; return; }
         }
         catch (JsonException) { return; }
@@ -357,4 +385,65 @@ async function t(u){try{await fetch(u,nc);return true}catch(e){return false}}
 </script>";
 
     public void Dispose() { _cts.Cancel(); try { _l.Stop(); } catch { } _cts.Dispose(); }
+}
+
+
+public sealed record HotspotClient(string Mac, string HostName, string Ip);
+
+public sealed class HotspotKnownDevice
+{
+    public string Mac { get; set; } = "";
+    public string Alias { get; set; } = "";
+    public string LastHostName { get; set; } = "";
+    public string LastIp { get; set; } = "";
+    public DateTimeOffset FirstSeen { get; set; }
+    public DateTimeOffset LastSeen { get; set; }
+    public DateTimeOffset? SessionStart { get; set; }       // when it joined during the current sharing session
+}
+
+/// <summary>
+/// Remembers the devices that joined the hotspot, with a name you choose for each. Windows offers no per-device block or kick for Mobile Hotspot,
+/// so this store is about knowing who is connected, not forcing anyone off.
+/// </summary>
+public sealed class HotspotDeviceStore
+{
+    readonly string _path = AppPaths.DataFile("hotspot-devices.json");
+    readonly Dictionary<string, HotspotKnownDevice> _items;
+    public HotspotDeviceStore() { _items = (Json.LoadOrNew<List<HotspotKnownDevice>>(_path)).ToDictionary(d => d.Mac, StringComparer.OrdinalIgnoreCase); }
+
+    public IReadOnlyCollection<HotspotKnownDevice> All => _items.Values.ToList();
+
+    public HotspotKnownDevice? Get(string mac) => _items.TryGetValue(mac, out var d) ? d : null;
+
+    public string DisplayName(HotspotClient c)
+    {
+        var k = Get(c.Mac);
+        if (k != null && !string.IsNullOrWhiteSpace(k.Alias)) return k.Alias;
+        return !string.IsNullOrWhiteSpace(c.HostName) ? c.HostName : "Unknown device";
+    }
+
+    public void Observe(IEnumerable<HotspotClient> current)
+    {
+        var now = DateTimeOffset.Now; var macs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in current)
+        {
+            macs.Add(c.Mac);
+            if (!_items.TryGetValue(c.Mac, out var k)) { k = new HotspotKnownDevice { Mac = c.Mac, FirstSeen = now }; _items[c.Mac] = k; }
+            k.LastSeen = now; if (k.SessionStart == null) k.SessionStart = now;
+            if (!string.IsNullOrWhiteSpace(c.HostName)) k.LastHostName = c.HostName;
+            if (!string.IsNullOrWhiteSpace(c.Ip)) k.LastIp = c.Ip;
+        }
+        foreach (var k in _items.Values) if (!macs.Contains(k.Mac)) k.SessionStart = null;   // left the hotspot
+        Save();
+    }
+
+    public void SetAlias(string mac, string alias)
+    {
+        if (!_items.TryGetValue(mac, out var k)) { k = new HotspotKnownDevice { Mac = mac, FirstSeen = DateTimeOffset.Now, LastSeen = DateTimeOffset.Now }; _items[mac] = k; }
+        k.Alias = alias.Trim().Length > 40 ? alias.Trim()[..40] : alias.Trim();
+        Save();
+    }
+
+    public void Forget(string mac) { _items.Remove(mac); Save(); }
+    void Save() { try { Json.Save(_path, _items.Values.ToList()); } catch (Exception ex) { Log.Debug("hotspot", "device list not saved: " + ex.Message); } }
 }

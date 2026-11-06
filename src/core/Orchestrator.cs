@@ -334,6 +334,8 @@ public sealed class Orchestrator
         _socks = new SocksRelay(_agent.LocalPort, _agent.Key);
         _socks.Start();
 
+        ReleaseWifiIfNeeded(dev);
+
         Set(ConnState.Connecting, "Creating virtual adapter");
         Step("adapter", StageState.Active);
         _net = new TunnelNetwork(_journal);
@@ -508,6 +510,47 @@ public sealed class Orchestrator
         _ = Task.Run(() => HealthLoop(_healthCts.Token));
     }
 
+    WifiLink? _releasedWifi;
+    public string WifiHandoverNote { get; private set; } = "";
+
+    /// <summary>
+    /// The PC is normally online through Wi-Fi. For the phone connection to be the only path (and for the radio to be free to host a hotspot) the Wi-Fi
+    /// network is disconnected now and rejoined when the connection ends (disconnect, failure, quit, crash recovery). Non-fatal if anything goes wrong.
+    /// </summary>
+    void ReleaseWifiIfNeeded(AdbDevice dev)
+    {
+        _releasedWifi = null; WifiHandoverNote = "";
+        if (!WifiHandover.ShouldRelease(Cfg.DropWifiWhileConnected, Cfg.ShareWifi, dev.WifiAddress != null)) return;
+        try
+        {
+            var link = WifiHandover.Current();
+            if (link == null) { Log.Info("wifi", "The PC is not connected to a Wi-Fi network; nothing to release."); return; }
+            _journal.State.WifiProfile = link.Profile; _journal.State.WifiInterfaceGuid = link.InterfaceGuid.ToString(); _journal.State.WifiSsid = link.Ssid; _journal.Save();   // journal first
+            if (WifiHandover.Disconnect(link))
+            {
+                _releasedWifi = link;
+                WifiHandoverNote = $"Wi-Fi \"{link.Ssid}\" is disconnected while the phone connection is used; it is rejoined afterwards.";
+                Log.Ok("wifi", WifiHandoverNote);
+            }
+            else { _journal.State.WifiProfile = null; _journal.State.WifiInterfaceGuid = null; _journal.State.WifiSsid = null; _journal.Save(); Log.Warn("wifi", "Could not disconnect the PC's Wi-Fi; continuing with it connected."); }
+        }
+        catch (Exception ex) { Log.Warn("wifi", "Wi-Fi release skipped: " + ex.Message); }
+    }
+
+    void RestoreWifi()
+    {
+        var link = _releasedWifi;
+        if (link == null) return;
+        _releasedWifi = null; WifiHandoverNote = "";
+        try
+        {
+            bool ok = WifiHandover.Reconnect(link);
+            Log.Info("wifi", ok ? $"Rejoining the Wi-Fi network \"{link.Ssid}\"..." : $"Could not rejoin \"{link.Ssid}\" automatically; connect to it from the Windows Wi-Fi menu.");
+        }
+        catch (Exception ex) { Log.Warn("wifi", "Could not rejoin the Wi-Fi network: " + ex.Message); }
+        finally { _journal.State.WifiProfile = null; _journal.State.WifiInterfaceGuid = null; _journal.State.WifiSsid = null; _journal.Save(); }
+    }
+
     /// <summary>Explicit "forget this PC" on a phone: ends any session on it, then makes the companion delete its key.</summary>
     public async Task UnpairAsync(string serial)
     {
@@ -529,6 +572,21 @@ public sealed class Orchestrator
         if (!CanShareNow) throw new InvalidOperationException("Connect first: Wi-Fi sharing shares the verified CiciPDA connection.");
         if (IsSharing) return;
         await StartSharingAsync(CancellationToken.None);
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// "Disconnect everyone": Windows Mobile Hotspot has no per-device kick, so the supported way to remove all current devices is to give the hotspot a
+    /// new passphrase and restart it. Devices that know the old password can no longer rejoin.
+    /// </summary>
+    public async Task ChangeSharingPasswordAsync()
+    {
+        if (!CanShareNow) throw new InvalidOperationException("Connect first: the hotspot can only be restarted while the connection is up.");
+        Cfg.HotspotPasswordProtected = Secret.Protect(Secret.GeneratePassphrase());
+        _settings.Save();
+        if (IsSharing) await StopSharingNowAsync();
+        await StartSharingAsync(CancellationToken.None);
+        Log.Ok("hotspot", "The hotspot was restarted with a new password; all previously connected devices were disconnected.");
         Changed?.Invoke();
     }
 
@@ -666,6 +724,7 @@ public sealed class Orchestrator
         try { _agent?.Dispose(); } catch (Exception ex) { Log.Warn("cleanup", "agent: " + ex.Message); }
         _agent = null;
         _journal.Reset();
+        RestoreWifi();                                                // last: the normal network is back in charge only after the tunnel is gone
 
         if (_session != null)
         {

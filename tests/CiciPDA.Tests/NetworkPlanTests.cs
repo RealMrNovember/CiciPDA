@@ -518,3 +518,233 @@ public class DnsPolicyTests
         Assert.Fail("WinNet.cs not found");
     }
 }
+
+
+[Collection("AppPaths")]
+public class WifiHandoverTests
+{
+    [Theory]
+    [InlineData(false, false, false, false)]   // nothing asked: leave the PC's Wi-Fi alone
+    [InlineData(true,  false, false, true)]    // user asked for it
+    [InlineData(false, true,  false, true)]    // sharing needs the radio
+    [InlineData(true,  true,  true,  false)]   // never when the phone itself is reached over Wi-Fi
+    [InlineData(false, true,  true,  false)]
+    public void ShouldRelease_TruthTable(bool drop, bool share, bool phoneOverWifi, bool expected) => Assert.Equal(expected, WifiHandover.ShouldRelease(drop, share, phoneOverWifi));
+
+    [Fact]
+    public async Task Current_ReadsTheRealWifiNetwork_LikeNetsh_WithoutChangingAnything()
+    {
+        var link = WifiHandover.Current();                                   // read-only Native Wifi query (language independent)
+        var netsh = await ProcessRunner.RunAsync("netsh.exe", new[] { "wlan", "show", "interfaces" }, TimeSpan.FromSeconds(15));
+        if (link == null) { Assert.DoesNotContain(" SSID ", netsh.Stdout.Replace("BSSID", "")); return; }     // not on Wi-Fi: netsh must agree
+        Assert.False(string.IsNullOrWhiteSpace(link.Profile)); Assert.False(string.IsNullOrWhiteSpace(link.Ssid));
+        Assert.Contains(link.Ssid, netsh.Stdout);                                                            // same network as Windows reports
+        Assert.NotEqual(Guid.Empty, link.InterfaceGuid);
+    }
+
+    [Fact]
+    public void Journal_RemembersTheReleasedWifi_SoCrashRecoveryCanRejoinIt()
+    {
+        AppPaths.DataDir = Path.Combine(Path.GetTempPath(), "cici-wifi-" + Guid.NewGuid());
+        var j = new RecoveryJournal(); j.State.WifiProfile = "Home"; j.State.WifiInterfaceGuid = Guid.NewGuid().ToString(); j.State.WifiSsid = "Home"; j.Save();
+        var j2 = new RecoveryJournal();
+        Assert.Equal("Home", j2.State.WifiProfile); Assert.False(j2.State.IsEmpty);
+        j2.Reset();
+    }
+
+    static string Src(params string[] parts)
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(new[] { d.FullName }.Concat(parts).ToArray());
+            if (File.Exists(f)) return File.ReadAllText(f);
+        }
+        throw new FileNotFoundException(string.Join("/", parts));
+    }
+
+    [Fact]
+    public void Orchestrator_ReleasesWifiBeforeTheTunnel_AndRestoresItLastOnEveryExitPath()
+    {
+        var s = Src("src", "core", "Orchestrator.cs");
+        Assert.True(s.IndexOf("ReleaseWifiIfNeeded(dev);") < s.IndexOf("_net = new TunnelNetwork(_journal);"));
+        int td = s.IndexOf("async Task TeardownAsync");
+        Assert.True(s.IndexOf("RestoreWifi();", td) > s.IndexOf("_journal.Reset();", td));                 // after the tunnel and adapter are gone
+        Assert.Contains("_journal.State.WifiProfile = link.Profile;", s);                                      // journaled BEFORE disconnecting
+        Assert.True(s.IndexOf("_journal.State.WifiProfile = link.Profile;") < s.IndexOf("WifiHandover.Disconnect(link)"));
+    }
+}
+
+public class AppBehaviourTests
+{
+    static string Src(params string[] parts)
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(new[] { d.FullName }.Concat(parts).ToArray());
+            if (File.Exists(f)) return File.ReadAllText(f);
+        }
+        throw new FileNotFoundException(string.Join("/", parts));
+    }
+
+    [Fact]
+    public void CtrlBreak_HasARealHandler_SoTheAppCannotKillItself()
+    {
+        // Regression: SetConsoleCtrlHandler(NULL, TRUE) only ignores Ctrl+C. Sending Ctrl+Break to tun2socks while attached to its console terminated CiciPDA itself
+        // (the app closed on Disconnect/failed Connect in 2.1.7-2.2.0).
+        var s = Src("src", "core", "ProcessRunner.cs");
+        Assert.Contains("SetConsoleCtrlHandler(SwallowCtrl, true)", s);
+        Assert.Contains("type is 0 or 1", s);
+        Assert.DoesNotContain("SetConsoleCtrlHandler(IntPtr.Zero, true)", s);
+    }
+
+    [Fact]
+    public void CloseButton_HidesToTrayWhileConnected_AndRealExitsAreExplicit()
+    {
+        var w = Src("src", "app", "MainWindow.xaml.cs");
+        Assert.Contains("System.Windows.Forms.NotifyIcon", w);
+        Assert.Contains("!_quitRequested && !App.Quitting && (_orch.IsActive || _orch.IsBusy)", w);
+        Assert.Contains("HideToTray();", w);
+        Assert.Contains("Quit CiciPDA", w); Assert.Contains("Disconnect", w); Assert.Contains("Open CiciPDA", w);
+        var a = Src("src", "app", "App.xaml.cs");
+        Assert.Contains("SessionEnding += (_, _) => Quitting = true;", a);
+        var vm = Src("src", "app", "ShellViewModel.cs");
+        Assert.Contains("App.Quitting = true;", vm);                                        // updater and restart-as-admin really exit
+    }
+
+    [Fact]
+    public void SecondLaunch_AsksTheRunningInstanceToShowItself()
+    {
+        var a = Src("src", "app", "App.xaml.cs");
+        Assert.Contains("EventWaitHandle.OpenExisting(ShowEventName)", a);
+        Assert.Contains("win.ShowFromTray()", a);
+    }
+}
+
+public class WindowPlacementTests
+{
+    static readonly Box Screen = new(0, 0, 1920, 1080);
+
+    [Fact] public void NothingSaved_MeansCentre() => Assert.Null(WindowPlacement.Fit(null, null, null, null, Screen));
+
+    [Fact]
+    public void SavedPositionOnScreen_IsRestoredExactly()
+    {
+        var b = WindowPlacement.Fit(300, 120, 1200, 760, Screen);
+        Assert.Equal(new Box(300, 120, 1200, 760), b);
+    }
+
+    [Theory]
+    [InlineData(5000, 100)]      // monitor that no longer exists (far right)
+    [InlineData(-4000, 100)]     // far left
+    [InlineData(100, 3000)]      // far below
+    public void SavedPositionOffScreen_FallsBackToCentre(double left, double top) => Assert.Null(WindowPlacement.Fit(left, top, 1200, 760, Screen));
+
+    [Fact]
+    public void WindowSlightlyOutside_IsPulledBackOnScreen()
+    {
+        var b = WindowPlacement.Fit(1000, 600, 1200, 760, Screen)!.Value;
+        Assert.True(b.Right <= Screen.Right + 0.01 && b.Bottom <= Screen.Bottom + 0.01 && b.Left >= 0 && b.Top >= 0);
+    }
+
+    [Fact]
+    public void TooSmallOrHugeSizes_AreClamped()
+    {
+        var small = WindowPlacement.Fit(100, 100, 300, 200, Screen)!.Value;
+        Assert.True(small.Width >= WindowPlacement.MinWidth && small.Height >= WindowPlacement.MinHeight);
+        var huge = WindowPlacement.Fit(0, 0, 9000, 9000, Screen)!.Value;
+        Assert.True(huge.Width <= Screen.Width && huge.Height <= Screen.Height);
+    }
+
+    [Fact] public void NaNValues_AreIgnored() => Assert.Null(WindowPlacement.Fit(double.NaN, 10, 1200, 760, Screen));
+
+    [Fact]
+    public void WindowOnSecondaryMonitorWithNegativeCoordinates_IsKept()
+    {
+        var two = new Box(-1920, 0, 3840, 1080);                 // monitor to the left of the primary
+        Assert.Equal(new Box(-1700, 80, 1200, 760), WindowPlacement.Fit(-1700, 80, 1200, 760, two));
+    }
+
+    [Fact]
+    public void SettingsPage_DoesNotOverwriteSavedPosition()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(d.FullName, "src", "app", "ShellViewModel.cs");
+            if (!File.Exists(f)) continue;
+            Assert.Contains("e.WindowLeft = c.WindowLeft;", File.ReadAllText(f));
+            return;
+        }
+        Assert.Fail("ShellViewModel.cs not found");
+    }
+}
+
+
+[Collection("AppPaths")]
+public class HotspotDevicesTests
+{
+    static HotspotDeviceStore NewStore() { AppPaths.DataDir = Path.Combine(Path.GetTempPath(), "cici-hsd-" + Guid.NewGuid()); return new HotspotDeviceStore(); }
+
+    [Fact]
+    public void Names_PreferAlias_ThenHostName_ThenUnknown()
+    {
+        var s = NewStore();
+        var c = new HotspotClient("AA-BB-CC-DD-EE-FF", "DESKTOP-1", "192.168.137.5");
+        Assert.Equal("DESKTOP-1", s.DisplayName(c));
+        s.SetAlias(c.Mac, "Mike's laptop"); Assert.Equal("Mike's laptop", s.DisplayName(c));
+        Assert.Equal("Unknown device", s.DisplayName(new HotspotClient("11-22-33-44-55-66", "", "")));
+    }
+
+    [Fact]
+    public void Alias_SurvivesRestart_AndIsCaseInsensitiveOnMac()
+    {
+        var s = NewStore(); s.SetAlias("aa-bb-cc-dd-ee-ff", "Phone");
+        var again = new HotspotDeviceStore();
+        Assert.Equal("Phone", again.Get("AA-BB-CC-DD-EE-FF")!.Alias);
+    }
+
+    [Fact]
+    public void Observe_TracksSessionStart_AndClearsItWhenTheDeviceLeaves()
+    {
+        var s = NewStore(); var c = new HotspotClient("AA-BB-CC-DD-EE-01", "x", "192.168.137.2");
+        s.Observe(new[] { c });
+        Assert.NotNull(s.Get(c.Mac)!.SessionStart); Assert.Equal("192.168.137.2", s.Get(c.Mac)!.LastIp);
+        s.Observe(Array.Empty<HotspotClient>());
+        Assert.Null(s.Get(c.Mac)!.SessionStart);                            // left: no longer "connected"
+        Assert.NotNull(s.Get(c.Mac));                                       // but still known
+    }
+
+    [Fact]
+    public void AliasLength_IsLimited() { var s = NewStore(); s.SetAlias("AA-00", new string('x', 200)); Assert.Equal(40, s.Get("AA-00")!.Alias.Length); }
+
+    [Fact]
+    public async Task StatusScript_RunsOnThisWindows_AndReturnsStateCountAndList_ReadOnly()
+    {
+        // Query a real Wi-Fi connection profile (read-only): proves GetTetheringClients/Get-NetNeighbor syntax and the JSON shape.
+        var wifi = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211 && n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up);
+        if (wifi == null || !Guid.TryParse(wifi.Id, out var g)) return;
+        var json = await HotspotService.RawStatusAsync(g.ToString());
+        Assert.NotNull(json);
+        using var d = System.Text.Json.JsonDocument.Parse(json!);
+        var root = d.RootElement;
+        var state = root.GetProperty("state").GetString();
+        Assert.True(state is "On" or "Off" or "InTransition" or "NoProfile" or "Unknown", "unexpected state " + state);
+        if (state != "NoProfile") { Assert.True(root.TryGetProperty("clients", out _)); Assert.True(root.TryGetProperty("list", out _)); }
+    }
+
+    [Fact]
+    public void UiAndCommands_ForSharedDevices_Exist()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+        {
+            var f = Path.Combine(d.FullName, "src", "app", "MainWindow.xaml");
+            if (!File.Exists(f)) continue;
+            var xaml = File.ReadAllText(f);
+            foreach (var b in new[] { "SharedDevices", "ChangeSharePassword", "RefreshSharedDevices", "Rename", "CopyIp", "CopyMac" }) Assert.Contains("{Binding " + b, xaml);
+            Assert.Contains("cannot disconnect or block a single device", xaml);          // the limitation is stated, not hidden
+            var core = File.ReadAllText(Path.Combine(d.FullName, "src", "core", "Orchestrator.cs"));
+            Assert.Contains("ChangeSharingPasswordAsync", core);
+            return;
+        }
+        Assert.Fail("MainWindow.xaml not found");
+    }
+}

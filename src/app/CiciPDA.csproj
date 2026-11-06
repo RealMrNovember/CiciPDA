@@ -3,12 +3,13 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>   <!-- only for the system-tray NotifyIcon; part of the Windows Desktop runtime, no extra package -->
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>CiciPDA</AssemblyName>
     <RootNamespace>CiciPDA.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>2.2.0</Version>
+    <Version>2.2.1</Version>
     <Company>CiciByte Technology, Inc.</Company>
     <Authors>CiciByte Technology, Inc.</Authors>
     <Product>CiciPDA</Product>
@@ -24,6 +25,12 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF and WinForms share type names (Application, Button, ...): do not import the WinForms namespaces implicitly -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\core\CiciPDA.Core.csproj" />

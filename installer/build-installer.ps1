@@ -4,7 +4,7 @@
 #  3. ISCC (Inno Setup 6) compiles installer\CiciPDA.iss
 # Release signing: set CICI_KEYSTORE/CICI_KS_PASS/CICI_KS_ALIAS before step 1, run tools\ReleaseSigner to sign companion.json,
 # and pass -SignTool "signtool sign /fd SHA256 /a /tr http://timestamp.digicert.com /td SHA256" to sign the installer.
-param([string]$Version = '2.2.0', [switch]$SkipCompanion, [string]$SignTool = '', [string]$Notes = '')
+param([string]$Version = '2.2.1', [switch]$SkipCompanion, [string]$SignTool = '', [string]$Notes = '')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $pub = Join-Path $root 'artifacts\publish'

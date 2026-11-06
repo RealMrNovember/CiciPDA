@@ -81,6 +81,10 @@ public sealed class ManagedProcess : IDisposable
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool AttachConsole(uint pid);
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool FreeConsole();
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
+    delegate bool ConsoleCtrlDelegate(uint ctrlType);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool SetConsoleCtrlHandler(ConsoleCtrlDelegate handler, bool add);
+    // Kept in a static field so the garbage collector cannot free it while Windows may still call it.
+    static readonly ConsoleCtrlDelegate SwallowCtrl = type => type is 0 or 1;      // CTRL_C_EVENT, CTRL_BREAK_EVENT: handled, do not terminate us
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)] static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
     [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
     static readonly object ConsoleGate = new();
@@ -104,7 +108,10 @@ public sealed class ManagedProcess : IDisposable
                 FreeConsole();                               // a GUI app normally has none; detach if it does
                 if (AttachConsole((uint)_p.Id))
                 {
-                    SetConsoleCtrlHandler(IntPtr.Zero, true);   // our own process must ignore the event it is about to send
+                    // We are now attached to the child's console, so the event below is delivered to US as well as to the child. SetConsoleCtrlHandler(NULL, TRUE)
+                    // only ignores Ctrl+C: Ctrl+Break still terminated this very application (the app closed when the user pressed Disconnect).
+                    // A real handler that reports the event as handled protects us.
+                    SetConsoleCtrlHandler(SwallowCtrl, true);
                     // CTRL_BREAK_EVENT (1), not CTRL_C: a parent that ignores Ctrl+C makes children inherit "ignore", but Ctrl+Break cannot be disabled that way.
                     // Go programs such as tun2socks map both to SIGINT and shut down cleanly.
                     sent = GenerateConsoleCtrlEvent(1 /* CTRL_BREAK_EVENT */, 0);
@@ -115,7 +122,7 @@ public sealed class ManagedProcess : IDisposable
         bool exited = false;
         if (sent)
             try { using var cts = new CancellationTokenSource(timeoutMs); await _p.WaitForExitAsync(cts.Token); exited = true; } catch (OperationCanceledException) { }
-        lock (ConsoleGate) { try { SetConsoleCtrlHandler(IntPtr.Zero, false); FreeConsole(); } catch { } }
+        lock (ConsoleGate) { try { SetConsoleCtrlHandler(SwallowCtrl, false); FreeConsole(); } catch { } }
         if (!exited) { Kill(); return false; }
         return true;
     }

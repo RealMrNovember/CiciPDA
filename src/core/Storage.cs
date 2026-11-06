@@ -24,6 +24,7 @@ public sealed class AppSettings
     public string DnsSecondary { get; set; } = "1.0.0.1";
     public int Mtu { get; set; } = 1400;
     public bool Ipv6LeakProtection { get; set; } = true;
+    public bool DropWifiWhileConnected { get; set; }            // disconnect this PC's Wi-Fi while the phone connection is up (always done when Wi-Fi sharing is on)
     public bool ForceDnsThroughTunnel { get; set; } = true;     // NRPT catch-all rule: only the tunnel's DNS servers answer while connected
     public bool UseCompanion { get; set; } = true;            // install/use the signed Android companion app (recommended)
     public bool AutoUpdateCompanion { get; set; } = true;     // check the signed release channel for a newer companion
@@ -35,6 +36,12 @@ public sealed class AppSettings
     public long DataCriticalMb { get; set; } = 20480;
     public bool AutoCheckUpdates { get; set; } = true;       // check the signed release channel for a new CiciPDA
     public bool StartMinimized { get; set; }
+    // Where the user last left the main window (DIPs). Null until the window has been moved/resized once.
+    public double? WindowLeft { get; set; }
+    public double? WindowTop { get; set; }
+    public double? WindowWidth { get; set; }
+    public double? WindowHeight { get; set; }
+    public bool WindowMaximized { get; set; }
     public string LogLevel { get; set; } = "Info";            // Debug | Info | Warning | Error
 }
 
@@ -120,6 +127,8 @@ public sealed class SettingsStore
     public AppSettings Current { get; private set; }
     public event Action? Changed;
     public SettingsStore() { Current = Json.LoadOrNew<AppSettings>(_path); Apply(); }
+    /// <summary>Persist without raising Changed (used for window position, which must not trigger UI refreshes).</summary>
+    public void SaveQuietly() { try { Json.Save(_path, Current); } catch (Exception ex) { Log.Debug("settings", "Save failed: " + ex.Message); } }
     public void Save() { try { Json.Save(_path, Current); } catch (Exception ex) { Log.Error("settings", ex, "Save failed"); } Apply(); Changed?.Invoke(); }
     void Apply() => Log.MinFileLevel = Enum.TryParse<Severity>(Current.LogLevel, true, out var s) ? s : Severity.Info;
 }

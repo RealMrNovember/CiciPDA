@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.2.1 - What's new
+
+**Important fix: the app no longer closes itself**
+- In 2.1.7-2.2.0 pressing Connect (when the attempt failed) or Disconnect could close CiciPDA completely. Cause: stopping the packet engine sent a Ctrl+Break to its console, and CiciPDA was attached to that console and received it too. A real handler now absorbs it (verified with a GUI-process test harness).
+
+**Runs in the system tray**
+- While a connection is active (or connecting), the **X button hides CiciPDA to the system tray** instead of closing it, so the connection keeps working. The tray icon has *Open CiciPDA*, *Disconnect* and *Quit CiciPDA*; left-click opens the window. Starting CiciPDA again brings the running one to the front. Windows shutdown/sign-out, the updater and *Quit* still exit cleanly and restore your network.
+
+**Remembers where you put the window**
+- Position, size and maximised state are saved and restored on the next start (validated against the current monitors, so it never opens off-screen).
+
+**Wi-Fi handover for sharing**
+- If your PC is on Wi-Fi, CiciPDA can disconnect that network while the phone connection is used and rejoin it afterwards. It happens automatically when Wi-Fi sharing is on (the radio is needed for the hotspot) and can be enabled separately in Settings. It is journaled, so a crash or restart rejoins your network too. Never used when the phone is reached over Wi-Fi.
+
+**See and manage the devices on your hotspot**
+- *Devices* page: every device joined to your hotspot with its name, IP and MAC address and how long it has been connected; give each a name you choose (remembered), copy IP/MAC, and **Change password and disconnect all** (Windows has no per-device block or kick for Mobile Hotspot, so a new password is the supported way to remove devices).
+
 ## 2.2.0 - What's new
 
 **DNS fix (the "no internet although connected" problem)**

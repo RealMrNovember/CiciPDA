@@ -320,6 +320,7 @@
                                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0" Visibility="{Binding ShareEnabled, Converter={StaticResource BoolVis}}">
                                         <Button Content="Start sharing" Command="{Binding StartShare}" Style="{StaticResource Primary}" Padding="12,5" Margin="0,0,8,0" IsEnabled="{Binding CanStartSharing}"/>
                                         <Button Content="Stop sharing" Command="{Binding StopShare}" Padding="12,5" IsEnabled="{Binding CanStopSharing}"/>
+                                        <Button Content="Manage devices" Command="{Binding Navigate}" CommandParameter="Devices" Padding="12,5" Margin="8,0,0,0"/>
                                         <Button Content="Settings" Command="{Binding Navigate}" CommandParameter="Settings" Padding="12,5" Margin="8,0,0,0"/>
                                     </StackPanel>
                                 </StackPanel>
@@ -470,6 +471,42 @@
                                 <Button Content="{Binding L[dev.restart]}" Command="{Binding RestartAdb}"/>
                             </StackPanel>
                         </Grid>
+                        <TextBlock Text="WI-FI SHARING: DEVICES ON YOUR HOTSPOT" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="{Binding SharedDevicesHint}" Style="{StaticResource MutedText}" FontSize="12.5" VerticalAlignment="Center" TextWrapping="Wrap" Visibility="{Binding SharedDevicesHint, Converter={StaticResource HasText}}"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Refresh" Command="{Binding RefreshSharedDevices}" Margin="0,0,8,0"/>
+                                        <Button Content="Change password and disconnect all" Command="{Binding ChangeSharePassword}" Style="{StaticResource Danger}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding SharedDevices}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Padding="0,10">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="190"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
+                                                        <TextBlock Text="{Binding HostName}" Style="{StaticResource MutedText}" FontSize="11.5"/>
+                                                        <TextBlock Text="{Binding Since}" Style="{StaticResource MutedText}" FontSize="11"/>
+                                                    </StackPanel>
+                                                    <HeaderedContentControl Grid.Column="1" Style="{StaticResource Metric}" Header="IP ADDRESS" Content="{Binding Ip}" FontSize="13"/>
+                                                    <HeaderedContentControl Grid.Column="2" Style="{StaticResource Metric}" Header="MAC ADDRESS" Content="{Binding Mac}" FontSize="12"/>
+                                                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <Button Content="Name it" Command="{Binding Rename}" Padding="10,4" Margin="0,0,6,0"/>
+                                                        <Button Content="Copy IP" Command="{Binding CopyIp}" Padding="10,4" Margin="0,0,6,0"/>
+                                                        <Button Content="Copy MAC" Command="{Binding CopyMac}" Padding="10,4"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Style="{StaticResource MutedText}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap" Text="Windows Mobile Hotspot cannot disconnect or block a single device. To remove devices, change the password: every connected device is disconnected and only those you give the new password can rejoin."/>
+                            </StackPanel>
+                        </Border>
                         <TextBlock Text="CONNECTED NOW" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource Card}" Visibility="{Binding HasDevices, Converter={StaticResource InvBoolVis}}"><TextBlock Text="{Binding L[empty.devices]}" Style="{StaticResource MutedText}"/></Border>
                         <ItemsControl ItemsSource="{Binding DeviceRows}">
@@ -572,6 +609,7 @@
                                 <Grid Style="{StaticResource SettingRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBlock Text="Adapter MTU (576–1500)" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding Edit.Mtu}"/></Grid>
                                 <CheckBox Content="IPv6 leak protection (route IPv6 into the tunnel)" IsChecked="{Binding Edit.Ipv6LeakProtection}" Margin="0,7"/>
                                 <CheckBox Content="Resolve all names only through the tunnel (adds a temporary DNS policy rule; recommended)" IsChecked="{Binding Edit.ForceDnsThroughTunnel}" Margin="0,7"/>
+                                <CheckBox Content="Disconnect this PC's Wi-Fi while the phone connection is used, and rejoin it afterwards (always done when Wi-Fi sharing is on)" IsChecked="{Binding Edit.DropWifiWhileConnected}" Margin="0,7"/>
                                 <CheckBox Content="Install and use the signed Android companion app (recommended)" IsChecked="{Binding Edit.UseCompanion}" Margin="0,7"/>
                                 <CheckBox Content="Check the signed release channel for companion updates" IsChecked="{Binding Edit.AutoUpdateCompanion}" Margin="0,7"/>
                                 <CheckBox Content="If the companion cannot be installed, fall back to the no-install shell helper" IsChecked="{Binding Edit.AllowLegacyFallback}" Margin="0,7"/>
@@ -615,8 +653,8 @@
                         <TextBlock Text="{Binding L[nav.help]}" Style="{StaticResource H1}" Margin="0,0,0,14"/>
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12" BorderBrush="{DynamicResource Green}">
                             <StackPanel>
-                                <TextBlock Text="WHAT'S NEW IN 2.2.0" Style="{StaticResource SectionTitle}" Foreground="{DynamicResource Green}"/>
-                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" LineHeight="20" Text="• DNS fix: while connected, Windows resolves names only through the tunnel's DNS servers (a temporary policy rule, removed on disconnect). Other adapters can no longer answer with an empty result and break the internet checks.&#10;• Wi-Fi sharing card on the Connect page: switch, network name, masked password with Show/Copy, live state, connected devices, Start/Stop.&#10;• The header Update button shows download progress and cannot be pressed twice; new Check for updates button.&#10;• A failed connection no longer blocks the next one."/>
+                                <TextBlock Text="WHAT'S NEW IN 2.2.1" Style="{StaticResource SectionTitle}" Foreground="{DynamicResource Green}"/>
+                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" LineHeight="20" Text="• Fixed: the app no longer closes itself when you press Connect or Disconnect.&#10;• The X button hides CiciPDA to the system tray while a connection is active, so the connection keeps running. Tray menu: Open, Disconnect, Quit.&#10;• The window opens where you left it (position, size, maximised).&#10;• Wi-Fi handover: your PC's Wi-Fi is released while the phone connection is used (automatic with Wi-Fi sharing) and rejoined afterwards.&#10;• Devices page: see every device on your hotspot (name, IP, MAC), name them, copy details, and change the password to disconnect everyone.&#10;• DNS fix: while connected, Windows resolves names only through the tunnel's DNS servers (a temporary policy rule, removed on disconnect). Other adapters can no longer answer with an empty result and break the internet checks.&#10;• Wi-Fi sharing card on the Connect page: switch, network name, masked password with Show/Copy, live state, connected devices, Start/Stop.&#10;• The header Update button shows download progress and cannot be pressed twice; new Check for updates button.&#10;• A failed connection no longer blocks the next one."/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">

@@ -64,7 +64,7 @@ CiciPDA checks the signed release channel shortly after start and every six hour
 
 ## What's new
 
-See [CHANGELOG.md](CHANGELOG.md). Highlights of 2.2.0: **DNS fix** (names are resolved only through the tunnel while connected), a visible **Wi-Fi sharing** card, an **Update** button that shows progress and a header **Check for updates** button.
+See [CHANGELOG.md](CHANGELOG.md). Highlights of 2.2.1: the app **no longer closes itself** on Connect/Disconnect, it **hides to the system tray** while connected, it **remembers its window position**, it can **release the PC's Wi-Fi** while sharing, and the Devices page lists and names the **devices on your hotspot**. Earlier: **DNS fix**, the **Wi-Fi sharing** card, an **Update** button with progress and **Check for updates**.
 
 ## Platform support
 

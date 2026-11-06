@@ -63,7 +63,10 @@ public sealed class JournalState
     public string? HotspotAdapter { get; set; }
     public string? HotspotSsid { get; set; }
     public bool NrptActive { get; set; }
-    public bool IsEmpty => Tun2SocksPid == 0 && ForwardPort == 0 && BypassRoutes.Count == 0 && !HotspotActive && !NrptActive;
+    public string? WifiProfile { get; set; }
+    public string? WifiInterfaceGuid { get; set; }
+    public string? WifiSsid { get; set; }
+    public bool IsEmpty => Tun2SocksPid == 0 && ForwardPort == 0 && BypassRoutes.Count == 0 && !HotspotActive && !NrptActive && WifiProfile == null;
 }
 public sealed record BypassRoute(string Prefix, int IfIndex);
 
@@ -89,6 +92,11 @@ public sealed class RecoveryJournal
             await WinNet.Netsh(NetshPlan.DeleteBypass(r.Prefix, r.IfIndex));
         if (s.ForwardPort > 0 && s.AdbSerial != null) await adb.RemoveForwardAsync(s.AdbSerial, s.ForwardPort);
         if (s.HotspotActive) await new HotspotService().RecoverAsync(s.HotspotAdapter, s.HotspotSsid);
+        if (s.WifiProfile != null && Guid.TryParse(s.WifiInterfaceGuid, out var wg))
+        {
+            var ok = WifiHandover.Reconnect(new WifiLink(wg, "", s.WifiProfile, s.WifiSsid ?? ""));
+            Log.Info("recovery", ok ? $"Rejoining the Wi-Fi network \"{s.WifiProfile}\" that a previous session had released." : "Could not rejoin the Wi-Fi network from a previous session.");
+        }
         if (s.NrptActive) { await DnsPolicy.RemoveAsync(); Log.Info("recovery", "Removed the DNS policy rule left by a previous session."); }
         Reset();
     }

@@ -88,6 +88,19 @@ public sealed class IndicatorRow : Observable
     public ItemState State => _on ? ItemState.Ok : ItemState.Pending;
 }
 
+public sealed class SharedDeviceRow
+{
+    public string Name { get; init; } = "";
+    public string Mac { get; init; } = "";
+    public string Ip { get; init; } = "";
+    public string Since { get; init; } = "";
+    public string HostName { get; init; } = "";
+    public bool HasAlias { get; init; }
+    public ICommand? Rename { get; init; }
+    public ICommand? CopyMac { get; init; }
+    public ICommand? CopyIp { get; init; }
+}
+
 public sealed class ToastRow { public Severity Severity { get; init; } public string Text { get; init; } = ""; }
 
 public sealed class ShellViewModel : Observable
@@ -189,6 +202,12 @@ public sealed class ShellViewModel : Observable
     public ObservableCollection<ActivityEvent> Events { get; } = new();
     public ObservableCollection<DeviceRow> DeviceRows { get; } = new();
     public ObservableCollection<DeviceRow> KnownRows { get; } = new();
+    public ObservableCollection<SharedDeviceRow> SharedDevices { get; } = new();
+    public bool HasSharedDevices => SharedDevices.Count > 0;
+    public string SharedDevicesHint { get => _sdHint; private set => Set(ref _sdHint, value); }
+    string _sdHint = "";
+    public ICommand ChangeSharePassword { get; }
+    public ICommand RefreshSharedDevices { get; }
     public ObservableCollection<SessionRow> Sessions { get; } = new();
     public ObservableCollection<DiagRow> DiagRows { get; } = new();
     public ObservableCollection<ToastRow> Toasts { get; } = new();
@@ -252,6 +271,12 @@ public sealed class ShellViewModel : Observable
         OpenLink = new RelayCommand(p => { if (p is string u && (u.StartsWith("https://") )) Process.Start(new ProcessStartInfo(u) { UseShellExecute = true }); });
         GenPassword = new RelayCommand(_ => HotspotPassword = Secret.GeneratePassphrase());
         ToggleShare = new RelayCommand(OnToggleShare);
+        ChangeSharePassword = new RelayCommand(async _ =>
+        {
+            if (!Dialogs.Confirm("Change password and disconnect all devices?", "Windows has no way to disconnect a single device from the hotspot. CiciPDA will give the hotspot a NEW password and restart it, which disconnects every device now connected. Devices that know the old password cannot rejoin; give the new password to the ones you want back.", "Change password", true)) return;
+            await Orch.ChangeSharingPasswordAsync(); RefreshAll();
+        });
+        RefreshSharedDevices = new RelayCommand(async _ => { await Orch.Hotspot.RefreshAsync(); RefreshAll(); });
         StartShare = new RelayCommand(async _ => { await Orch.StartSharingNowAsync(); RefreshAll(); });
         StopShare = new RelayCommand(async _ => { await Orch.StopSharingNowAsync(); RefreshAll(); });
         CopySharePassword = new RelayCommand(_ => { var p = Secret.Unprotect(Settings.Current.HotspotPasswordProtected); if (p.Length > 0) { Clipboard.SetText(p); Notifier.Show(Severity.Success, "Wi-Fi password copied to the clipboard."); } });
@@ -353,6 +378,7 @@ public sealed class ShellViewModel : Observable
         {
             var exe = Environment.ProcessPath!;
             Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, Verb = "runas" });
+            App.Quitting = true;
             Application.Current.Shutdown();
         }
         catch (System.ComponentModel.Win32Exception) { Notifier.Show(Severity.Warning, "Elevation was cancelled."); }
@@ -381,12 +407,15 @@ public sealed class ShellViewModel : Observable
         if (e.Mtu != c.Mtu) risky.Add("MTU");
         if (e.Ipv6LeakProtection != c.Ipv6LeakProtection) risky.Add("IPv6 routing");
         if (e.ForceDnsThroughTunnel != c.ForceDnsThroughTunnel) risky.Add("DNS policy");
+        if (e.DropWifiWhileConnected != c.DropWifiWhileConnected) risky.Add("disconnecting the PC's Wi-Fi while connected");
+        if (e.ShareWifi && !c.ShareWifi) risky.Add("the PC's Wi-Fi will be disconnected while connected (the radio hosts the hotspot)");
         if (e.ShareWifi && !c.ShareWifi) risky.Add("Wi-Fi sharing (starts a hotspot)");
         if (e.AdbPath != c.AdbPath) risky.Add("adb location");
         if (risky.Count > 0 && !Dialogs.Confirm("Apply network changes?", "These settings change how CiciPDA configures Windows networking: " + string.Join(", ", risky) + ". They take effect on the next connection.", "Apply", true)) return;
 
         e.HotspotPasswordProtected = Secret.Protect(HotspotPassword);
         e.LastMethod = c.LastMethod; e.PreferredDeviceSerial = c.PreferredDeviceSerial;
+        e.WindowLeft = c.WindowLeft; e.WindowTop = c.WindowTop; e.WindowWidth = c.WindowWidth; e.WindowHeight = c.WindowHeight; e.WindowMaximized = c.WindowMaximized;
         foreach (var p in typeof(AppSettings).GetProperties()) p.SetValue(c, p.GetValue(e));
         Settings.Save();
         Notifier.Show(Severity.Success, "Settings saved.");
@@ -569,6 +598,7 @@ public sealed class ShellViewModel : Observable
             SetUpdatePhase("Installing", "Installing", 1, true);
             await Orch.ShutdownAsync();
             AppUpdater.LaunchInstaller(path);
+            App.Quitting = true;
             Application.Current.Shutdown();                              // stays busy: the application is closing
         }
         catch
@@ -623,6 +653,7 @@ public sealed class ShellViewModel : Observable
         Indicators[3].On = ind.TunnelConnected; Indicators[4].On = ind.NetworkConfigured; Indicators[5].On = ind.InternetVerified;
         PhoneNetworkText = string.IsNullOrEmpty(Orch.PhoneNetwork) ? "—" : Orch.PhoneNetwork;
         var hs = Orch.Hotspot;
+        SyncSharedDevices();
         Raise(nameof(ShareEnabled)); Raise(nameof(ShareSsid)); Raise(nameof(SharePasswordDisplay)); Raise(nameof(CanStartSharing)); Raise(nameof(CanStopSharing));
         var h = Orch.Hotspot;
         (ShareStateText, ShareStateBrush) = !Settings.Current.ShareWifi ? ("Off. Turn it on to let other devices use this connection through Wi-Fi.", Theme.Brush("Muted"))
@@ -715,6 +746,33 @@ public sealed class ShellViewModel : Observable
             else Checklist.Add(items[i]);
         }
         while (Checklist.Count > items.Count) Checklist.RemoveAt(Checklist.Count - 1);
+    }
+
+    void SyncSharedDevices()
+    {
+        var hs = Orch.Hotspot;
+        SharedDevices.Clear();
+        foreach (var c in hs.Clients)
+        {
+            var known = hs.Devices.Get(c.Mac);
+            var c0 = c;
+            SharedDevices.Add(new SharedDeviceRow
+            {
+                Name = hs.Devices.DisplayName(c), HasAlias = !string.IsNullOrWhiteSpace(known?.Alias), Mac = c.Mac, Ip = string.IsNullOrEmpty(c.Ip) ? "-" : c.Ip,
+                HostName = c.HostName, Since = known?.SessionStart is { } s ? "connected " + Fmt.Ago(s) : "",
+                Rename = new RelayCommand(_ =>
+                {
+                    var n = Dialogs.Prompt("Name this device", $"Give {(string.IsNullOrWhiteSpace(c0.HostName) ? c0.Mac : c0.HostName)} a name you will recognise.", hs.Devices.Get(c0.Mac)?.Alias ?? c0.HostName);
+                    if (n != null) { hs.Devices.SetAlias(c0.Mac, n); RefreshAll(); }
+                }),
+                CopyMac = new RelayCommand(_ => { Clipboard.SetText(c0.Mac); Notifier.Show(Severity.Success, "MAC address copied."); }),
+                CopyIp = new RelayCommand(_ => { if (!string.IsNullOrEmpty(c0.Ip)) { Clipboard.SetText(c0.Ip); Notifier.Show(Severity.Success, "IP address copied."); } }),
+            });
+        }
+        Raise(nameof(HasSharedDevices));
+        SharedDevicesHint = !Settings.Current.ShareWifi ? "Wi-Fi sharing is off. Turn it on from the Connect page."
+            : !Orch.IsSharing ? "Sharing is not running yet (it starts after the connection is verified)."
+            : SharedDevices.Count == 0 ? "No device has joined the hotspot yet." : "";
     }
 
     void RebuildDevices()
